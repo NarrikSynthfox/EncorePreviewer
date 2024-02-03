@@ -261,6 +261,13 @@ local function Main()
 	curCursorTime=reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1),reaper.GetCursorPosition())
 	if playState~=1 then
 		curBeat=curCursorTime
+		curNote=1
+		for i=1,#notes do
+			curNote=i
+			if notes[i][1]+notes[i][2]>=curBeat then
+				break
+			end
+		end
 	end
 	if curCursorTime~=lastCursorTime then
 		lastCursorTime=curCursorTime
@@ -270,7 +277,6 @@ local function Main()
 			if notes[i][1]+notes[i][2]>=curBeat then
 				break
 			end
-			
 		end
 	end
 	gfx.x,gfx.y=0,0
