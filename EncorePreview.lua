@@ -234,7 +234,7 @@ local function Main()
 		if inst==4 then inst=1 else inst=inst+1 end
 		midihash=""
 		updateMidi()
-	elseif char == 43 then -- +
+	elseif char == 43 or char == 61 then -- +
 		trackSpeed = trackSpeed+0.05
 	elseif char == 45 then -- -
 		if trackSpeed>0.25 then trackSpeed = trackSpeed-0.05 end
