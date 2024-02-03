@@ -12,7 +12,7 @@ gfx.init("FNFest Preview", 640, 480, 0, 200, 200)
 inst=1
 diff=4
 midihash=""
-
+trackSpeed=2
 pR={
 	{{60,63},{66,69}},
 	{{72,75},{78,81}},
@@ -20,7 +20,7 @@ pR={
 	{{96,100},{102,106}}
 }
 oP=116
-
+offset=0
 diffNames={"Easy","Medium","Hard","Expert"}
 notes={}
 imgscale=math.min(gfx.w,gfx.h)/1024
@@ -64,9 +64,10 @@ end
 
 function parseNotes(take)
     notes = {}
+	od_phrases={}
+	od=false
+	cur_od_phrase=1
     _, notecount = reaper.MIDI_CountEvts(take)
-    od = false
-    odEnd = 0
 
     for i = 0, notecount - 1 do
         _, _, _, spos, epos, _, pitch, _ = reaper.MIDI_GetNote(take, i)
@@ -74,20 +75,14 @@ function parseNotes(take)
         nend = reaper.MIDI_GetProjQNFromPPQPos(take, epos)
 
         if pitch == oP then
-            od = true
-            odEnd = nend
+			table.insert(od_phrases, {ntime,nend})
         elseif pitch >= pR[diff][1][1] and pitch <= pR[diff][1][2] then
             lane = pitch - pR[diff][1][1]
 			noteIndex = getNoteIndex(ntime, lane)
-            if od then
-                if ntime >= odEnd then
-                    od = false
-                end
-            end
 			if noteIndex ~= -1 then
                 notes[noteIndex][2] = nend-ntime
             else
-				table.insert(notes, { ntime, nend - ntime, lane, false, od })
+				table.insert(notes, { ntime, nend - ntime, lane, false, false })
             end
         elseif pitch >= pR[diff][2][1] and pitch <= pR[diff][2][2] then
             lane = pitch - pR[diff][2][1]
@@ -100,6 +95,16 @@ function parseNotes(take)
             end
         end
     end
+	if #od_phrases~=0 then
+		for i=1,#notes do
+			if notes[i][1]>od_phrases[cur_od_phrase][2] then
+				if cur_od_phrase<#od_phrases then cur_od_phrase=cur_od_phrase+1 end
+			end
+			if notes[i][1]>=od_phrases[cur_od_phrase][1] and notes[i][1]<=od_phrases[cur_od_phrase][2] then
+				notes[i][5]=true
+			end
+		end
+	end
 end
 
 
@@ -157,11 +162,11 @@ function drawNotes()
 		end
 		lane=notes[i][3]
 		lift=notes[i][4]
-		curend=(notes[curNote][1]+notes[curNote][2])-curBeat
+		curend=((notes[curNote][1]+notes[curNote][2])-curBeat)*trackSpeed
 		od=notes[i][5]
-		if ntime>curBeat+4 then break end
-		rtime=ntime-curBeat
-		rend=(ntime+nlen)-curBeat
+		if ntime>curBeat+(4/trackSpeed) then break end
+		rtime=((ntime-curBeat)*trackSpeed)+offset
+		rend=(((ntime+nlen)-curBeat)*trackSpeed)+offset
 		if rtime<0 then rtime=0 end
 		if nlen<=0.27 then
 			rend=rtime
@@ -173,6 +178,7 @@ function drawNotes()
 		if rend>4 then
 			rend=4
 		end
+		
 		notescale=imgscale*(1-(nsm*rtime))
 		notescaleend=imgscale*(1-(nsm*rend))
 		if diff<4 then
@@ -212,23 +218,35 @@ local function Main()
 	if char ~= -1 then
 		reaper.defer(Main)
 	end
-	if char == 1818584692 then --left arrow
+	if char == 59 then -- [
 		if diff==1 then diff=4 else diff=diff-1 end
 		midihash=""
 		updateMidi()
-	elseif char == 1919379572 then --right arrow
+	elseif char == 39 then -- ]
 		if diff==4 then diff=1 else diff=diff+1 end
 		midihash=""
 		updateMidi()
-	elseif char == 30064 then --up arrow
+	elseif char == 91 then -- ;
 		if inst==1 then inst=4 else inst=inst-1 end
 		midihash=""
 		updateMidi()
-	elseif char == 1685026670 then --down arrow
+	elseif char == 93 then -- '
 		if inst==4 then inst=1 else inst=inst+1 end
 		midihash=""
 		updateMidi()
+	elseif char == 43 then -- +
+		trackSpeed = trackSpeed+0.05
+	elseif char == 45 then -- -
+		if trackSpeed>0.25 then trackSpeed = trackSpeed-0.05 end
+	elseif char == 125 then -- {
+		offset = offset+0.01
+	elseif char == 123 then -- - }
+		offset = offset-0.01
 	end
+
+	-- if char~=0 then
+	-- 	reaper.ShowConsoleMsg(tostring(char).."\n")
+	-- end
 	gfx.setfont(1, "Arial", 16)
 	
 	if diff==4 then
@@ -257,14 +275,18 @@ local function Main()
 	end
 	gfx.x,gfx.y=0,0
 	gfx.drawstr(string.format(
-		[[Instrument: %s, change with up/down
-		Difficulty: %s, change with left/right
+		[[Instrument: %s, change with [ / ]
+		Difficulty: %s, change with ; / '
+		Track Speed: %.02f, change with + / -
+		Offset: %.02f, change with { / }
 		Note Count: %d
 		Current Beat: %.02f
 		Current Note: %d
 		]],
 		instrumentTracks[inst][1],
 		diffNames[diff],
+		trackSpeed,
+		offset,
 		tostring(#notes),
 		curBeat,
 		curNote
