@@ -1,10 +1,15 @@
-version_num="0.0.5"
+version_num="0.0.6"
 imgScale=480/1024
-inst=1
-diff=4
+diffNames={"Easy","Medium","Hard","Expert"}
+movequant=10
+quants={1/32,1/24,1/16,1/12,1/8,1/6,1/4,1/3,1/2,1,2,4}
+--highway rendering vars
 midiHash=""
 beatHash=""
+eventsHash=""
 trackSpeed=2
+inst=1
+diff=4
 pR={
 	{{60,63},{66,69}},
 	{{72,75},{78,81}},
@@ -13,13 +18,13 @@ pR={
 } --pitch ranges {{notes},{lift markers}} for each difficulty
 oP=116 --overdrive pitch
 offset=0
-diffNames={"Easy","Medium","Hard","Expert"}
-
---note rendering vars
 notes={}
 beatLines={}
+eventsData={}
+trackRange={0,0}
 curBeat=0
 curBeatLine=1
+curEvent=1
 curNote=1
 nxoff=152 --x offset
 nxm=0.05 --x mult of offset
@@ -28,11 +33,20 @@ nsm=0.05 --scale multiplier
 
 lastCursorTime=reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1),reaper.GetCursorPosition())
 
+showHelp=false
 
 local function rgb2num(r, g, b)
 	g = g * 256
 	b = b * 256 * 256
 	return r + g + b
+end
+
+function toFractionString(number)
+	if number<1 then
+		return string.format('1/%d', math.floor(1/number))
+	else
+		return string.format('%d',number)
+	end
 end
 
 function getNoteIndex(time, lane)
@@ -56,17 +70,20 @@ function findTrack(trackName)
 	return nil
 end
 
-gfx.clear = rgb2num(64, 64, 64)
+gfx.clear = rgb2num(42, 0, 71)
 gfx.init("FNFest Preview", 640, 480, 0, 200, 200)
 
-	local script_folder = string.gsub(debug.getinfo(1).source:match("@?(.*[\\|/])"),"\\","/")
-	hwy_emh = gfx.loadimg(0,script_folder.."assets/hwy_emh.png")
-	hwy_x = gfx.loadimg(1,script_folder.."assets/hwy_x.png")
-	note = gfx.loadimg(2,script_folder.."assets/note.png")
-	note_o = gfx.loadimg(3,script_folder.."assets/note_o.png")
-	lift = gfx.loadimg(4,script_folder.."assets/lift.png")
-	lift_o = gfx.loadimg(5,script_folder.."assets/lift_o.png")
-	lift_invalid = gfx.loadimg(6,script_folder.."assets/lift_invalid.png")
+
+
+
+local script_folder = string.gsub(debug.getinfo(1).source:match("@?(.*[\\|/])"),"\\","/")
+hwy_emh = gfx.loadimg(0,script_folder.."assets/hwy_emh.png")
+hwy_x = gfx.loadimg(1,script_folder.."assets/hwy_x.png")
+note = gfx.loadimg(2,script_folder.."assets/note.png")
+note_o = gfx.loadimg(3,script_folder.."assets/note_o.png")
+lift = gfx.loadimg(4,script_folder.."assets/lift.png")
+lift_o = gfx.loadimg(5,script_folder.."assets/lift_o.png")
+lift_invalid = gfx.loadimg(6,script_folder.."assets/lift_invalid.png")
 
 instrumentTracks={
 	{"Drums",findTrack("PART DRUMS")},
@@ -157,11 +174,38 @@ function updateMidi()
 	end
 end
 
-function updatebeatLines()
-	eventTracks={
-		findTrack("EVENTS"),
-		findTrack("BEAT")
-	}
+function updateEvents()
+	eventTracks[1]=findTrack("EVENTS")
+	if eventTracks[1] then
+		local numItems = reaper.CountTrackMediaItems(eventTracks[1])
+		for i = 0, numItems-1 do
+			local item = reaper.GetTrackMediaItem(eventTracks[1], i)
+			local take = reaper.GetActiveTake(item)
+			local _,hash=reaper.MIDI_GetHash(take,false)
+			if eventsHash~=hash then
+				eventsData={}
+				_,_,_,textcount = reaper.MIDI_CountEvts(take)
+				for i = 0, textcount - 1 do
+					_,_,_,epos,etype,msg = reaper.MIDI_GetTextSysexEvt(take, i)
+					etime = reaper.MIDI_GetProjQNFromPPQPos(take, epos)
+					if etype==1 then
+						table.insert(eventsData,{epos,msg})
+						if msg=="[music_start]" then trackRange[1]=etime
+						elseif msg=="[end]" then trackRange[2]=etime
+						end
+					end
+				end
+				eventsHash=hash
+			end
+		end
+	else
+		eventsHash=""
+		eventsData={}
+	end
+end
+
+function updateBeatLines()
+	eventTracks[2]=findTrack("BEAT")
 	if eventTracks[2] then
 		local numItems = reaper.CountTrackMediaItems(eventTracks[2])
 		for i = 0, numItems-1 do
@@ -178,7 +222,9 @@ function updatebeatLines()
 					if pitch==13 then
 						db=false
 					end
-					table.insert(beatLines,{btime,db})
+					if btime>=trackRange[1] and btime<trackRange[2] then
+						table.insert(beatLines,{btime,db})
+					end
 				end
 				beatHash=hash
 			end
@@ -202,8 +248,8 @@ function drawNotes()
 		curend=((notes[curNote][1]+notes[curNote][2])-curBeat)*trackSpeed
 		od=notes[i][5]
 		if ntime>curBeat+(4/trackSpeed) then break end
-		rtime=((ntime-curBeat)*trackSpeed)+offset
-		rend=(((ntime+nlen)-curBeat)*trackSpeed)+offset
+		rtime=((ntime-curBeat)*trackSpeed)
+		rend=(((ntime+nlen)-curBeat)*trackSpeed)
 		if rtime<0 then rtime=0 end
 		if nlen<=0.27 then
 			rend=rtime
@@ -243,7 +289,6 @@ function drawNotes()
 		if invalidLift then gfxid=6 end
 		gfx.r, gfx.g, gfx.b=1,1,1
 		gfx.blit(gfxid,noteScale,0,0,0,128,64,notex,notey)
-		
 	end
 end
 
@@ -251,14 +296,14 @@ function drawBeats()
 	width=300
 	if diff==4 then
 		width=425
-	end 
+	end
 	for i=curBeatLine,#beatLines do
 		btime=beatLines[i][1]
 		if btime>curBeat+(4/trackSpeed) then break end
-		if curBeat>beatLines[i][1]+2 then
+		if curBeat>btime+2 then
 			curBeatLine=i
 		end
-		rtime=((btime-curBeat)*trackSpeed)+offset
+		rtime=((btime-curBeat)*trackSpeed)-0.08
 		beatScale=imgScale*(1-(nsm*rtime))
 		
 		sx=((gfx.w/2)-((width*(1-(nxm*rtime)))*beatScale))
@@ -273,7 +318,80 @@ function drawBeats()
 end
 
 updateMidi()
-updatebeatLines()
+updateEvents()
+updateBeatLines()
+
+function moveCursorByBeats(increment)
+    local currentPosition = reaper.GetCursorPosition()
+    local currentBeats = reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1), currentPosition)
+
+    -- Calculate the new position in beats
+	local newBeats = currentBeats + increment
+	newBeats=math.floor(newBeats*(1/quants[movequant])+0.5)/(1/quants[movequant])
+	-- Convert the new beats position to seconds
+    local newPosition = reaper.TimeMap2_QNToTime(reaper.EnumProjects(-1), newBeats)
+    -- Move the edit cursor to the new position
+    reaper.SetEditCurPos2(0, newPosition, true, true)
+end
+
+keyBinds={
+	[59]=function()
+		if diff==1 then diff=4 else diff=diff-1 end
+		midiHash=""
+		updateMidi()
+	end,
+	[39]=function()
+		if diff==4 then diff=1 else diff=diff+1 end
+		midiHash=""
+		updateMidi()
+	end,
+	[91]=function()
+		if inst==1 then inst=4 else inst=inst-1 end
+		midiHash=""
+		updateMidi()
+	end,
+	[93]=function()
+		if inst==4 then inst=1 else inst=inst+1 end
+		midiHash=""
+		updateMidi()
+	end,
+	[43]=function()
+		trackSpeed = trackSpeed+0.05
+	end,
+	[61]=function()
+		trackSpeed = trackSpeed+0.05
+	end,
+	[45]=function()
+		if trackSpeed>0.25 then trackSpeed = trackSpeed-0.05 end
+	end,
+	[125]=function()
+		offset = offset+0.01
+	end,
+	[123]=function()
+		offset = offset-0.01
+	end,
+	[32]=function()
+		if reaper.GetPlayState()==1 then
+			reaper.OnStopButton()
+		else
+			reaper.OnPlayButton()
+		end
+	end,
+	[30064]=function()
+		moveCursorByBeats(quants[movequant])
+	end,
+	[1685026670]=function()
+		moveCursorByBeats(-quants[movequant])
+	end,
+	[1818584692.0]=function() 
+		if movequant==1 then movequant=#quants else movequant=movequant-1 end
+	end,
+	[1919379572.0]=function() 
+		if movequant==#quants then movequant=1 else movequant=movequant+1 end
+	end,
+	[26161.0]=function() showHelp = not showHelp end
+}
+
 
 local function Main()
 	
@@ -282,47 +400,23 @@ local function Main()
 	if char ~= -1 then
 		reaper.defer(Main)
 	end
-
-	if char == 59 then -- [
-		if diff==1 then diff=4 else diff=diff-1 end
-		midiHash=""
-		updateMidi()
-	elseif char == 39 then -- ]
-		if diff==4 then diff=1 else diff=diff+1 end
-		midiHash=""
-		updateMidi()
-	elseif char == 91 then -- ;
-		if inst==1 then inst=4 else inst=inst-1 end
-		midiHash=""
-		updateMidi()
-	elseif char == 93 then -- '
-		if inst==4 then inst=1 else inst=inst+1 end
-		midiHash=""
-		updateMidi()
-	elseif char == 43 or char == 61 then -- +
-		trackSpeed = trackSpeed+0.05
-	elseif char == 45 then -- -
-		if trackSpeed>0.25 then trackSpeed = trackSpeed-0.05 end
-	elseif char == 125 then -- {
-		offset = offset+0.01
-	elseif char == 123 then -- - }
-		offset = offset-0.01
-	end
-
+	playState=reaper.GetPlayState()
+	if keyBinds[char] then
+        keyBinds[char]()
+    end
 	-- if char~=0 then
 	-- 	reaper.ShowConsoleMsg(tostring(char).."\n")
-	-- end
-
-	gfx.setfont(1, "Arial", 16)
+	-- end	
 	
+
 	if diff==4 then
 		gfx.blit(1,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale)); 
 	else
 		gfx.blit(0,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale));   
 	end 
-	playState=reaper.GetPlayState()
+	
 	if playState==1 then
-		curBeat=reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1),reaper.GetPlayPosition())
+		curBeat=reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1),reaper.GetPlayPosition())-offset
 	end
 	curCursorTime=reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1),reaper.GetCursorPosition())
 	if playState~=1 then
@@ -359,30 +453,50 @@ local function Main()
 			end
 		end
 	end
+
+	updateEvents()
+	updateMidi()
+	updateBeatLines()
+	drawBeats()
+	drawNotes()
 	gfx.x,gfx.y=0,0
+	gfx.setfont(1, "Arial", 20)
 	gfx.drawstr(string.format(
-		[[Instrument: %s, change with [ / ]
-		Difficulty: %s, change with ; / '
-		Track Speed: %.02f, change with + / -
-		Offset: %.02f, change with { / }
-		Note Count: %d
-		Current Beat: %.02f
-		Current Note: %d
+		[[%s %s
+		Note: %d/%d
+		Current Beat: %.03f
+		Snap: %s
+		Track Speed: %.02f
+		Offset: %.02f
 		]],
-		instrumentTracks[inst][1],
 		diffNames[diff],
-		trackSpeed,
-		offset,
+		instrumentTracks[inst][1],
+		curNote,
 		tostring(#notes),
 		curBeat,
-		curNote
+		toFractionString(quants[movequant]),
+		trackSpeed,
+		offset
 	))
-	gfx.x,gfx.y=0,gfx.h-16
+	gfx.x,gfx.y=0,gfx.h-20
+	gfx.setfont(1, "Arial", 20)
 	gfx.drawstr(string.format("Version %s",version_num))
-	updateMidi()
-	updatebeatLines()
-	drawNotes()
-	drawBeats()
+	if showHelp then
+		gfx.mode=0
+		gfx.r,gfx.g,gfx.b,gfx.a=0,0,0,0.75
+		gfx.rect(0,0,gfx.w,gfx.h)
+		gfx.r,gfx.g,gfx.b,gfx.a=1,1,1,1
+		gfx.x,gfx.y=0,320*imgScale
+		gfx.drawstr([[Keybinds
+		 
+		Change instrument: [ / ]
+		Change difficulty: ; / '
+		Change track speed: + / -
+		Change offset: { / } (Shift + [ / ])
+		Change snap: left / right arrows
+		Scroll: up/down arrow keys
+		]],1,gfx.w,gfx.h)
+	end
 	gfx.update()
 end
 
