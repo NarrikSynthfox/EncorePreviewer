@@ -135,7 +135,7 @@ function parseNotes(take)
 			if notes[i][1]>od_phrases[cur_od_phrase][2] then
 				if cur_od_phrase<#od_phrases then cur_od_phrase=cur_od_phrase+1 end
 			end
-			if notes[i][1]>=od_phrases[cur_od_phrase][1] and notes[i][1]<=od_phrases[cur_od_phrase][2] then
+			if notes[i][1]>=od_phrases[cur_od_phrase][1] and notes[i][1]<od_phrases[cur_od_phrase][2] then
 				notes[i][5]=true
 			end
 		end
@@ -250,14 +250,16 @@ function drawNotes()
 		if ntime>curBeat+(4/trackSpeed) then break end
 		rtime=((ntime-curBeat)*trackSpeed)
 		rend=(((ntime+nlen)-curBeat)*trackSpeed)
-		if rtime<0 then rtime=0 end
 		if nlen<=0.27 then
 			rend=rtime
 		end
 		
+		if rtime<0 then rtime=0 end
+		
 		if rend<=0 and curNote~=#notes and curend<=0 then
 			curNote=i+1
 		end
+
 		if rend>4 then
 			rend=4
 		end
@@ -273,22 +275,25 @@ function drawNotes()
 		susy=gfx.h-(248*noteScale)-((nyoff*rtime)*noteScale)
 		endx=((gfx.w/2)+((nxoff*(1-(nxm*rend)))*noteScaleEnd*(lane-2)))
 		endy=gfx.h-(248*noteScaleEnd)-((nyoff*rend)*noteScaleEnd)
-		gfxid=2
-		if lift then gfxid=4 end
-		if od then 
-			gfxid=gfxid+1 
-			gfx.r, gfx.g, gfx.b=1,.56,0
-		else
-			gfx.r, gfx.g, gfx.b=0.72,.3,1
+		
+		if rend>=-0.05 then
+			gfxid=2
+			if lift then gfxid=4 end 
+			if od then 
+				gfxid=gfxid+1 
+				gfx.r, gfx.g, gfx.b=1,.56,0
+			else
+				gfx.r, gfx.g, gfx.b=0.72,.3,1
+			end
+			if rend>rtime then
+				gfx.line(susx-1,susy,endx-1,endy)
+				gfx.line(susx,susy,endx,endy)
+				gfx.line(susx+1,susy,endx+1,endy)
+			end
+			if invalidLift then gfxid=6 end
+			gfx.r, gfx.g, gfx.b=1,1,1
+			gfx.blit(gfxid,noteScale,0,0,0,128,64,notex,notey)
 		end
-		if rend>rtime then
-			gfx.line(susx-1,susy,endx-1,endy)
-			gfx.line(susx,susy,endx,endy)
-			gfx.line(susx+1,susy,endx+1,endy)
-		end
-		if invalidLift then gfxid=6 end
-		gfx.r, gfx.g, gfx.b=1,1,1
-		gfx.blit(gfxid,noteScale,0,0,0,128,64,notex,notey)
 	end
 end
 
