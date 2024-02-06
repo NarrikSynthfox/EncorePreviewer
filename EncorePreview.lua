@@ -397,9 +397,7 @@ keyBinds={
 	[26161.0]=function() showHelp = not showHelp end
 }
 
-
 local function Main()
-	
 	imgScale=math.min(gfx.w,gfx.h)/1024
 	local char = gfx.getchar()
 	if char ~= -1 then
@@ -419,46 +417,30 @@ local function Main()
 	else
 		gfx.blit(0,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale));   
 	end 
-	
 	if playState==1 then
 		curBeat=reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1),reaper.GetPlayPosition())-offset
 	end
 	curCursorTime=reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1),reaper.GetCursorPosition())
-	if playState~=1 then
+	if playState~=1  then
 		curBeat=curCursorTime
-		curNote=1
-		for i=1,#notes do
-			curNote=i
-			if notes[i][1]+notes[i][2]>=curBeat then
-				break
-			end
-		end
-		curBeatLine=1
-		for i=1,#beatLines do
-			curBeatLine=i
-			if beatLines[i][1]>=curBeat-2 then
-				break
-			end
-		end
 	end
 	if curCursorTime~=lastCursorTime then
 		lastCursorTime=curCursorTime
-		curNote=1
-		for i=1,#notes do
-			curNote=i
-			if notes[i][1]+notes[i][2]>=curBeat then
-				break
-			end
-		end
-		curBeatLine=1
-		for i=1,#beatLines do
-			curBeatLine=i
-			if beatLines[i][1]>=curBeat-2 then
-				break
-			end
+	end
+	curNote=1
+	for i=1,#notes do
+		curNote=i
+		if notes[i][1]+notes[i][2]>=curBeat then
+			break
 		end
 	end
-
+	curBeatLine=1
+	for i=1,#beatLines do
+		curBeatLine=i
+		if beatLines[i][1]>=curBeat-2 then
+			break
+		end
+	end
 	updateEvents()
 	updateMidi()
 	updateBeatLines()
@@ -486,6 +468,9 @@ local function Main()
 	gfx.x,gfx.y=0,gfx.h-20
 	gfx.setfont(1, "Arial", 20)
 	gfx.drawstr(string.format("Version %s",version_num))
+	strx,stry=gfx.measurestr("Press F1 for controls")
+	gfx.x,gfx.y=gfx.w-strx,gfx.h-stry
+	gfx.drawstr("Press F1 for controls")
 	if showHelp then
 		gfx.mode=0
 		gfx.r,gfx.g,gfx.b,gfx.a=0,0,0,0.75
