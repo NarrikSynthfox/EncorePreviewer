@@ -2,7 +2,7 @@
 A ReaScript made to preview custom Fortnite Festival Charts
 
 ## Installation instructions:
-1. Put .lua and assets folder in **%appdata%/REAPER/Scripts**
+1. Put .lua **and** assets folder in **%appdata%/REAPER/Scripts**
 2. In REAPER, go to **Actions > Show action list...**
 3. Click **New action...** and then **Load ReaScript...**
 4. Navigate to **%appdata%/REAPER/Scripts**
