@@ -1,4 +1,4 @@
-version_num="0.0.6"
+version_num="0.0.7"
 imgScale=480/1024
 diffNames={"Easy","Medium","Hard","Expert"}
 movequant=10
