@@ -97,7 +97,17 @@ eventTracks={
 	findTrack("EVENTS"),
 	findTrack("BEAT")
 }
-
+local function notesCompare(a, b)
+    -- Compare the first values
+    if a[1] < b[1] then
+        return true
+    elseif a[1] > b[1] then
+        return false
+    else
+        -- If first values are equal, compare the second values
+        return a[3] < b[3]
+    end
+end
 function parseNotes(take)
 	notes = {}
 	od_phrases={}
@@ -115,25 +125,7 @@ function parseNotes(take)
 			valid=true
 			lane = pitch - pR[diff][1][1]
 			noteIndex = getNoteIndex(ntime, lane)
-			if lane==0 or lane==1 then
-				for f = 0,1 do
-					invalidIndex = getNoteIndex(ntime, f)
-					if invalidIndex~=-1 then
-						valid=false
-						notes[invalidIndex][6]=false
-					end
-				end
-			elseif lane==2 or lane==3 or lane==4 then
-				for f = 2,4 do
-					invalidIndex = getNoteIndex(ntime, f)
-					if invalidIndex~=-1 then
-						valid=false
-						notes[invalidIndex][6]=false
-					end
-				end
-			end
 			if noteIndex ~= -1 then
-				notes[noteIndex][2] = nend-ntime
 				if nend-ntime<0.33 and notes[noteIndex][2]==nend-ntime then
 					notes[noteIndex][6] = valid
 				end
@@ -163,6 +155,73 @@ function parseNotes(take)
 			end
 		end
 	end
+	table.sort(notes,notesCompare)
+	--illegal chords check
+	for i=1,#notes do
+		ntime=notes[i][1]
+		lane=notes[i][3]
+		if lane==0 or lane==1 then
+			for f = 0,1 do
+				invalidIndex = getNoteIndex(ntime, f)
+				if invalidIndex~=-1 and f~=lane then
+					notes[i][6]=false
+					notes[invalidIndex][6]=false
+				end
+			end
+		elseif lane==2 or lane==3 or lane==4 then
+			for f = 2,4 do
+				invalidIndex = getNoteIndex(ntime, f)
+				if invalidIndex~=-1 and f~=lane then
+					notes[i][6]=false
+					notes[invalidIndex][6]=false
+				end
+			end
+		end
+	end
+	--extended sustain check
+	sustain=false
+	sustain_idx=-1
+	sustain_start=-1
+	sustain_end=-1
+	for i=1,#notes do
+		ntime=notes[i][1]
+		if ntime>=sustain_end then 
+			sustain=false
+			sustain_idx=-1
+			sustain_start=-1
+			sustain_end=-1
+		end
+		nlen=notes[i][2]
+		nend=ntime+notes[i][2]
+		lane=notes[i][3]
+		if sustain==true then
+			if ntime<sustain_end then
+				if ntime~=sustain_start or nend~=sustain_end then
+					notes[i][6]=false
+					notes[sustain_idx][6]=false
+				end
+			end
+		else
+			if nlen>=0.33 then
+				sustain=true
+				sustain_start=ntime
+				sustain_end=nend
+				sustain_idx=i
+			end
+		end
+	end
+	--set all notes at time to invalid if one is
+	for i=1,#notes do
+		ntime=notes[i][1]
+		lane=notes[i][3]
+		for f = 0,4 do
+			invalidIndex = getNoteIndex(ntime, f)
+			if invalidIndex~=-1 then
+				if notes[invalidIndex][6]==false then notes[i][6]=false end
+			end
+		end
+	end
+	
 end
 
 function updateMidi()
