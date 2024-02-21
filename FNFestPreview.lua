@@ -81,6 +81,7 @@ hwy_emh = gfx.loadimg(0,script_folder.."assets/hwy_emh.png")
 hwy_x = gfx.loadimg(1,script_folder.."assets/hwy_x.png")
 note = gfx.loadimg(2,script_folder.."assets/note.png")
 note_o = gfx.loadimg(3,script_folder.."assets/note_o.png")
+note_invalid = gfx.loadimg(7,script_folder.."assets/note_invalid.png")
 lift = gfx.loadimg(4,script_folder.."assets/lift.png")
 lift_o = gfx.loadimg(5,script_folder.."assets/lift_o.png")
 lift_invalid = gfx.loadimg(6,script_folder.."assets/lift_invalid.png")
@@ -103,7 +104,6 @@ function parseNotes(take)
 	od=false
 	cur_od_phrase=1
 	_, notecount = reaper.MIDI_CountEvts(take)
-	
 	for i = 0, notecount - 1 do
 		_, _, _, spos, epos, _, pitch, _ = reaper.MIDI_GetNote(take, i)
 		ntime = reaper.MIDI_GetProjQNFromPPQPos(take, spos)
@@ -112,21 +112,44 @@ function parseNotes(take)
 		if pitch == oP then
 			table.insert(od_phrases, {ntime,nend})
 		elseif pitch >= pR[diff][1][1] and pitch <= pR[diff][1][2] then
+			valid=true
 			lane = pitch - pR[diff][1][1]
 			noteIndex = getNoteIndex(ntime, lane)
+			if lane==0 or lane==1 then
+				for f = 0,1 do
+					invalidIndex = getNoteIndex(ntime, f)
+					if invalidIndex~=-1 then
+						valid=false
+						notes[invalidIndex][6]=false
+					end
+				end
+			elseif lane==2 or lane==3 or lane==4 then
+				for f = 2,4 do
+					invalidIndex = getNoteIndex(ntime, f)
+					if invalidIndex~=-1 then
+						valid=false
+						notes[invalidIndex][6]=false
+					end
+				end
+			end
 			if noteIndex ~= -1 then
 				notes[noteIndex][2] = nend-ntime
+				if nend-ntime<0.33 and notes[noteIndex][2]==nend-ntime then
+					notes[noteIndex][6] = valid
+				end
 			else
-				table.insert(notes, { ntime, nend - ntime, lane, false, false })
+				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid })
 			end
 		elseif pitch >= pR[diff][2][1] and pitch <= pR[diff][2][2] then
 			lane = pitch - pR[diff][2][1]
 			noteIndex = getNoteIndex(ntime, lane)
-			
 			if noteIndex ~= -1 then
 				notes[noteIndex][4] = true
+				if nend-ntime>0.33 or notes[noteIndex][2]~=nend-ntime then
+					notes[noteIndex][6] = false
+				end
 			else
-				table.insert(notes, { ntime, -1, lane, true, false })
+				table.insert(notes, { ntime, nend - ntime, lane, true, false, false })
 			end
 		end
 	end
@@ -237,11 +260,11 @@ end
 
 function drawNotes()
 	for i=curNote,#notes do
-		invalidLift=false
+		invalid=false
 		ntime=notes[i][1]
 		nlen=notes[i][2]
-		if nlen==-1 then
-			invalidLift=true
+		if notes[i][6]==false then
+			invalid=true
 		end
 		lane=notes[i][3]
 		lift=notes[i][4]
@@ -285,12 +308,16 @@ function drawNotes()
 			else
 				gfx.r, gfx.g, gfx.b=0.72,.3,1
 			end
+			if invalid then
+				gfx.r, gfx.g, gfx.b=1,0,0
+			end
 			if rend>rtime then
 				gfx.line(susx-1,susy,endx-1,endy)
 				gfx.line(susx,susy,endx,endy)
 				gfx.line(susx+1,susy,endx+1,endy)
 			end
-			if invalidLift then gfxid=6 end
+			if invalid and lift then gfxid=6 end
+			if invalid and not lift then gfxid=7 end
 			gfx.r, gfx.g, gfx.b=1,1,1
 			gfx.blit(gfxid,noteScale,0,0,0,128,64,notex,notey)
 		end
