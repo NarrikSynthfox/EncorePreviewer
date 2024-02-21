@@ -216,8 +216,13 @@ function parseNotes(take)
 				sustain_idx=i
 			end
 		end
+		
 	end
 	table.sort(notes,notesCompareFlip)
+	sustain=false
+	sustain_idx=-1
+	sustain_start=-1
+	sustain_end=-1
 	for i=1,#notes do
 		ntime=notes[i][1]
 		if ntime>=sustain_end then 
@@ -244,6 +249,7 @@ function parseNotes(take)
 				sustain_idx=i
 			end
 		end
+		
 	end
 	--set all notes at time to invalid if one is
 	for i=1,#notes do
