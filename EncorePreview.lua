@@ -98,14 +98,21 @@ eventTracks={
 	findTrack("BEAT")
 }
 local function notesCompare(a, b)
-    -- Compare the first values
     if a[1] < b[1] then
         return true
     elseif a[1] > b[1] then
         return false
     else
-        -- If first values are equal, compare the second values
         return a[3] < b[3]
+    end
+end
+local function notesCompareFlip(a, b)
+    if a[1] < b[1] then
+        return true
+    elseif a[1] > b[1] then
+        return false
+    else
+        return a[3] > b[3]
     end
 end
 function parseNotes(take)
@@ -183,6 +190,34 @@ function parseNotes(take)
 	sustain_idx=-1
 	sustain_start=-1
 	sustain_end=-1
+	for i=1,#notes do
+		ntime=notes[i][1]
+		if ntime>=sustain_end then 
+			sustain=false
+			sustain_idx=-1
+			sustain_start=-1
+			sustain_end=-1
+		end
+		nlen=notes[i][2]
+		nend=ntime+notes[i][2]
+		lane=notes[i][3]
+		if sustain==true then
+			if ntime<sustain_end then
+				if ntime~=sustain_start or nend~=sustain_end then
+					notes[i][6]=false
+					notes[sustain_idx][6]=false
+				end
+			end
+		else
+			if nlen>=0.33 then
+				sustain=true
+				sustain_start=ntime
+				sustain_end=nend
+				sustain_idx=i
+			end
+		end
+	end
+	table.sort(notes,notesCompareFlip)
 	for i=1,#notes do
 		ntime=notes[i][1]
 		if ntime>=sustain_end then 
