@@ -22,8 +22,8 @@ notes={}
 beatLines={}
 eventsData={}
 trackRange={0,0}
-curBeat=0
-curBeatLine=1
+curTime=0
+curTimeLine=1
 curEvent=1
 curNote=1
 nxoff=152 --x offset
@@ -31,7 +31,7 @@ nxm=0.05 --x mult of offset
 nyoff=192 --y offset
 nsm=0.05 --scale multiplier
 
-lastCursorTime=reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1),reaper.GetCursorPosition())
+lastCursorTime=reaper.GetCursorPosition()
 
 showHelp=false
 
@@ -123,9 +123,10 @@ function parseNotes(take)
 	_, notecount = reaper.MIDI_CountEvts(take)
 	for i = 0, notecount - 1 do
 		_, _, _, spos, epos, _, pitch, _ = reaper.MIDI_GetNote(take, i)
-		ntime = reaper.MIDI_GetProjQNFromPPQPos(take, spos)
-		nend = reaper.MIDI_GetProjQNFromPPQPos(take, epos)
-		
+		ntime = reaper.MIDI_GetProjTimeFromPPQPos(take, spos)
+		nend = reaper.MIDI_GetProjTimeFromPPQPos(take, epos)
+		ntimebeats = reaper.MIDI_GetProjQNFromPPQPos(take, spos)
+		nendbeats = reaper.MIDI_GetProjQNFromPPQPos(take, epos)
 		if pitch == oP then
 			table.insert(od_phrases, {ntime,nend})
 		elseif pitch >= pR[diff][1][1] and pitch <= pR[diff][1][2] then
@@ -133,22 +134,22 @@ function parseNotes(take)
 			lane = pitch - pR[diff][1][1]
 			noteIndex = getNoteIndex(ntime, lane)
 			if noteIndex ~= -1 then
-				if nend-ntime<0.33 and notes[noteIndex][2]==nend-ntime then
+				if nendbeats-ntimebeats<0.33 and notes[noteIndex][2]==nend-ntime then
 					notes[noteIndex][6] = valid
 				end
 			else
-				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid })
+				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid , nendbeats- ntimebeats})
 			end
 		elseif pitch >= pR[diff][2][1] and pitch <= pR[diff][2][2] then
 			lane = pitch - pR[diff][2][1]
 			noteIndex = getNoteIndex(ntime, lane)
 			if noteIndex ~= -1 then
 				notes[noteIndex][4] = true
-				if nend-ntime>0.33 or notes[noteIndex][2]~=nend-ntime then
+				if nendbeats-ntimebeats>0.33 or notes[noteIndex][2]~=nend-ntime then
 					notes[noteIndex][6] = false
 				end
 			else
-				table.insert(notes, { ntime, nend - ntime, lane, true, false, false })
+				table.insert(notes, { ntime, nend - ntime, lane, true, false, false, nendbeats- ntimebeats})
 			end
 		end
 	end
@@ -199,6 +200,7 @@ function parseNotes(take)
 			sustain_end=-1
 		end
 		nlen=notes[i][2]
+		nlenbeats=notes[i][7]
 		nend=ntime+notes[i][2]
 		lane=notes[i][3]
 		if sustain==true then
@@ -209,7 +211,7 @@ function parseNotes(take)
 				end
 			end
 		else
-			if nlen>=0.33 then
+			if nlenbeats>=0.33 then
 				sustain=true
 				sustain_start=ntime
 				sustain_end=nend
@@ -232,6 +234,7 @@ function parseNotes(take)
 			sustain_end=-1
 		end
 		nlen=notes[i][2]
+		nlenbeats=notes[i][7]
 		nend=ntime+notes[i][2]
 		lane=notes[i][3]
 		if sustain==true then
@@ -242,7 +245,7 @@ function parseNotes(take)
 				end
 			end
 		else
-			if nlen>=0.33 then
+			if nlenbeats>=0.33 then
 				sustain=true
 				sustain_start=ntime
 				sustain_end=nend
@@ -283,7 +286,7 @@ function updateMidi()
 				curNote=1
 				for i=1,#notes do
 					curNote=i
-					if notes[i][1]+notes[i][2]>=curBeat then
+					if notes[i][1]+notes[i][2]>=curTime then
 						break
 					end
 					
@@ -310,7 +313,7 @@ function updateEvents()
 				_,_,_,textcount = reaper.MIDI_CountEvts(take)
 				for i = 0, textcount - 1 do
 					_,_,_,epos,etype,msg = reaper.MIDI_GetTextSysexEvt(take, i)
-					etime = reaper.MIDI_GetProjQNFromPPQPos(take, epos)
+					etime = reaper.MIDI_GetProjTimeFromPPQPos(take, epos)
 					if etype==1 then
 						table.insert(eventsData,{epos,msg})
 						if msg=="[music_start]" then trackRange[1]=etime
@@ -340,7 +343,7 @@ function updateBeatLines()
 				_, notecount = reaper.MIDI_CountEvts(take)
 				for i = 0, notecount - 1 do
 					_, _, _, spos, _, _, pitch, _ = reaper.MIDI_GetNote(take, i)
-					btime = reaper.MIDI_GetProjQNFromPPQPos(take, spos)
+					btime = reaper.MIDI_GetProjTimeFromPPQPos(take, spos)
 					db=true
 					if pitch==13 then
 						db=false
@@ -363,17 +366,18 @@ function drawNotes()
 		invalid=false
 		ntime=notes[i][1]
 		nlen=notes[i][2]
+		nlenbeats=notes[i][7]
 		if notes[i][6]==false then
 			invalid=true
 		end
 		lane=notes[i][3]
 		lift=notes[i][4]
-		curend=((notes[curNote][1]+notes[curNote][2])-curBeat)*trackSpeed
+		curend=((notes[curNote][1]+notes[curNote][2])-curTime)*(trackSpeed+2)
 		od=notes[i][5]
-		if ntime>curBeat+(4/trackSpeed) then break end
-		rtime=((ntime-curBeat)*trackSpeed)
-		rend=(((ntime+nlen)-curBeat)*trackSpeed)
-		if nlen<=0.27 then
+		if ntime>curTime+(4/(trackSpeed+2)) then break end
+		rtime=((ntime-curTime)*(trackSpeed+2))
+		rend=(((ntime+nlen)-curTime)*(trackSpeed+2))
+		if nlenbeats<=0.27 then
 			rend=rtime
 		end
 		
@@ -429,13 +433,13 @@ function drawBeats()
 	if diff==4 then
 		width=425
 	end
-	for i=curBeatLine,#beatLines do
+	for i=curTimeLine,#beatLines do
 		btime=beatLines[i][1]
-		if btime>curBeat+(4/trackSpeed) then break end
-		if curBeat>btime+2 then
-			curBeatLine=i
+		if btime>curTime+(4/(trackSpeed+2)) then break end
+		if curTime>btime+2 then
+			curTimeLine=i
 		end
-		rtime=((btime-curBeat)*trackSpeed)-0.08
+		rtime=((btime-curTime)*(trackSpeed+2))-0.08
 		beatScale=imgScale*(1-(nsm*rtime))
 		
 		sx=((gfx.w/2)-((width*(1-(nxm*rtime)))*beatScale))
@@ -449,10 +453,6 @@ function drawBeats()
 	end
 end
 
-updateMidi()
-updateEvents()
-updateBeatLines()
-
 function moveCursorByBeats(increment)
     local currentPosition = reaper.GetCursorPosition()
     local currentBeats = reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1), currentPosition)
@@ -465,6 +465,10 @@ function moveCursorByBeats(increment)
     -- Move the edit cursor to the new position
     reaper.SetEditCurPos2(0, newPosition, true, true)
 end
+
+updateMidi()
+updateEvents()
+updateBeatLines()
 
 keyBinds={
 	[59]=function()
@@ -488,13 +492,13 @@ keyBinds={
 		updateMidi()
 	end,
 	[43]=function()
-		trackSpeed = trackSpeed+0.05
+		trackSpeed = trackSpeed+0.25
 	end,
 	[61]=function()
-		trackSpeed = trackSpeed+0.05
+		trackSpeed = trackSpeed+0.25
 	end,
 	[45]=function()
-		if trackSpeed>0.25 then trackSpeed = trackSpeed-0.05 end
+		if trackSpeed>0.25 then trackSpeed = trackSpeed-0.25 end
 	end,
 	[125]=function()
 		offset = offset+0.01
@@ -545,11 +549,11 @@ local function Main()
 		gfx.blit(0,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale));   
 	end 
 	if playState==1 then
-		curBeat=reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1),reaper.GetPlayPosition())-offset
+		curTime=reaper.GetPlayPosition()-offset
 	end
-	curCursorTime=reaper.TimeMap2_timeToQN(reaper.EnumProjects(-1),reaper.GetCursorPosition())
+	curCursorTime=reaper.GetCursorPosition()
 	if playState~=1  then
-		curBeat=curCursorTime
+		curTime=curCursorTime
 	end
 	if curCursorTime~=lastCursorTime then
 		lastCursorTime=curCursorTime
@@ -557,14 +561,14 @@ local function Main()
 	curNote=1
 	for i=1,#notes do
 		curNote=i
-		if notes[i][1]+notes[i][2]>=curBeat then
+		if notes[i][1]+notes[i][2]>=curTime then
 			break
 		end
 	end
-	curBeatLine=1
+	curTimeLine=1
 	for i=1,#beatLines do
-		curBeatLine=i
-		if beatLines[i][1]>=curBeat-2 then
+		curTimeLine=i
+		if beatLines[i][1]>=curTime-2 then
 			break
 		end
 	end
@@ -578,7 +582,7 @@ local function Main()
 	gfx.drawstr(string.format(
 		[[%s %s
 		Note: %d/%d
-		Current Beat: %.03f
+		Current Time: %.03f
 		Snap: %s
 		Track Speed: %.02f
 		Offset: %.02f
@@ -587,7 +591,7 @@ local function Main()
 		instrumentTracks[inst][1],
 		curNote,
 		tostring(#notes),
-		curBeat,
+		curTime,
 		toFractionString(quants[movequant]),
 		trackSpeed,
 		offset
