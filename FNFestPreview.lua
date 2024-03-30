@@ -445,11 +445,13 @@ function drawBeats()
 		sx=((gfx.w/2)-((width*(1-(nxm*rtime)))*beatScale))
 		ex=((gfx.w/2)+((width*(1-(nxm*rtime)))*beatScale))
 		y=gfx.h-(248*beatScale)-((nyoff*rtime)*beatScale)
+		gfx.r,gfx.g,gfx.b=0.52,.3,0.55
 		gfx.line(sx,y,ex,y)
 		if beatLines[i][2] then
 			gfx.line(sx+1,y-1,ex-1,y-1)
 			gfx.line(sx-1,y+1,ex+1,y+1)
 		end
+		gfx.r,gfx.g,gfx.b=1,1,1
 	end
 end
 
