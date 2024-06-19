@@ -16,6 +16,13 @@ pR={
 	{{84,87},{90,93}},
 	{{96,100},{102,106}}
 } --pitch ranges {{notes},{lift markers}} for each difficulty
+plasticEventRanges = {
+	{{66, 67}},
+	{{77,78}},
+	{{89,90}},
+	{{101,102}}
+	-- hopo force 101, strum force 102, solo 103
+}
 oP=116 --overdrive pitch
 offset=0
 notes={}
@@ -79,18 +86,40 @@ gfx.init("Encore Preview", 640, 480, 0, 200, 200)
 local script_folder = string.gsub(debug.getinfo(1).source:match("@?(.*[\\|/])"),"\\","/")
 hwy_emh = gfx.loadimg(0,script_folder.."assets/hwy_emh.png")
 hwy_x = gfx.loadimg(1,script_folder.."assets/hwy_x.png")
+
+-- normal purple note
 note = gfx.loadimg(2,script_folder.."assets/note.png")
 note_o = gfx.loadimg(3,script_folder.."assets/note_o.png")
 note_invalid = gfx.loadimg(7,script_folder.."assets/note_invalid.png")
+
 lift = gfx.loadimg(4,script_folder.."assets/lift.png")
 lift_o = gfx.loadimg(5,script_folder.."assets/lift_o.png")
 lift_invalid = gfx.loadimg(6,script_folder.."assets/lift_invalid.png")
+
+hopo = gfx.loadimg(8,script_folder.."assets/hopo.png") -- do not use
+hopo_o = gfx.loadimg(9,script_folder.."assets/hopo_o.png")
+hopo_invalid = gfx.loadimg(10,script_folder.."assets/hopo_invalid.png")
+
+note_green = gfx.loadimg(11,script_folder.."assets/note_pgre.png")
+note_red = gfx.loadimg(12,script_folder.."assets/note_pred.png")
+note_yellow = gfx.loadimg(13,script_folder.."assets/note_pyel.png")
+note_blue = gfx.loadimg(14,script_folder.."assets/note_pblu.png")
+note_orange = gfx.loadimg(15,script_folder.."assets/note_pora.png")
+
+hopo_green = gfx.loadimg(16,script_folder.."assets/hopo_green.png")
+hopo_red = gfx.loadimg(17,script_folder.."assets/hopo_red.png")
+hopo_yellow = gfx.loadimg(18,script_folder.."assets/hopo_yellow.png")
+hopo_blue = gfx.loadimg(19,script_folder.."assets/hopo_blue.png")
+hopo_orange = gfx.loadimg(20,script_folder.."assets/hopo_orange.png")
 
 instrumentTracks={
 	{"Drums",findTrack("PART DRUMS")},
 	{"Bass",findTrack("PART BASS")},
 	{"Guitar",findTrack("PART GUITAR")},
-	{"Vocals",findTrack("PART VOCALS")}
+	{"Vocals",findTrack("PART VOCALS")},
+	{"Plastic Drums",findTrack("PLASTIC DRUMS")},
+	{"Plastic Bass", findTrack("PLASTIC BASS")},
+	{"Plastic Guitar", findTrack("PLASTIC GUITAR")}
 }
 
 eventTracks={
@@ -118,9 +147,14 @@ end
 function parseNotes(take)
 	notes = {}
 	od_phrases={}
+	hopo_forces = {}
 	od=false
 	cur_od_phrase=1
+	cur_hopo_force = 1
 	_, notecount = reaper.MIDI_CountEvts(take)
+
+	isplastic = inst >= 5
+
 	for i = 0, notecount - 1 do
 		_, _, _, spos, epos, _, pitch, _ = reaper.MIDI_GetNote(take, i)
 		ntime = reaper.MIDI_GetProjTimeFromPPQPos(take, spos)
@@ -138,9 +172,9 @@ function parseNotes(take)
 					notes[noteIndex][6] = valid
 				end
 			else
-				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid , nendbeats- ntimebeats})
+				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid , nendbeats- ntimebeats, false}) -- hopo
 			end
-		elseif pitch >= pR[diff][2][1] and pitch <= pR[diff][2][2] then
+		elseif pitch >= pR[diff][2][1] and pitch <= pR[diff][2][2] and not isplastic then
 			lane = pitch - pR[diff][2][1]
 			noteIndex = getNoteIndex(ntime, lane)
 			if noteIndex ~= -1 then
@@ -149,8 +183,10 @@ function parseNotes(take)
 					notes[noteIndex][6] = false
 				end
 			else
-				table.insert(notes, { ntime, nend - ntime, lane, true, false, false, nendbeats- ntimebeats})
+				table.insert(notes, { ntime, nend - ntime, lane, true, false, false, nendbeats- ntimebeats, false})
 			end
+		elseif pitch == plasticEventRanges[diff][1][1] and isplastic then
+			table.insert(hopo_forces, {ntime, nend})
 		end
 	end
 	if #od_phrases~=0 then
@@ -163,25 +199,40 @@ function parseNotes(take)
 			end
 		end
 	end
-	table.sort(notes,notesCompare)
-	--illegal chords check
-	for i=1,#notes do
-		ntime=notes[i][1]
-		lane=notes[i][3]
-		if lane==0 or lane==1 then
-			for f = 0,1 do
-				invalidIndex = getNoteIndex(ntime, f)
-				if invalidIndex~=-1 and f~=lane then
-					notes[i][6]=false
-					notes[invalidIndex][6]=false
-				end
+
+	if #hopo_forces ~= 0 then
+		for i=1,#notes do
+			if notes[i][1]>hopo_forces[cur_hopo_force][2] then
+				if cur_hopo_force<#hopo_forces then cur_hopo_force=cur_hopo_force+1 end
 			end
-		elseif lane==2 or lane==3 or lane==4 then
-			for f = 2,4 do
-				invalidIndex = getNoteIndex(ntime, f)
-				if invalidIndex~=-1 and f~=lane then
-					notes[i][6]=false
-					notes[invalidIndex][6]=false
+			if notes[i][1]>=hopo_forces[cur_hopo_force][1] and notes[i][1]<hopo_forces[cur_hopo_force][2] then
+				notes[i][8]=true
+			end
+		end
+	end
+
+	table.sort(notes,notesCompare)
+
+	--illegal chords check
+	if not isplastic then
+		for i=1,#notes do
+			ntime=notes[i][1]
+			lane=notes[i][3]
+			if lane==0 or lane==1 then
+				for f = 0,1 do
+					invalidIndex = getNoteIndex(ntime, f)
+					if invalidIndex~=-1 and f~=lane then
+						notes[i][6]=false
+						notes[invalidIndex][6]=false
+					end
+				end
+			elseif lane==2 or lane==3 or lane==4 then
+				for f = 2,4 do
+					invalidIndex = getNoteIndex(ntime, f)
+					if invalidIndex~=-1 and f~=lane then
+						notes[i][6]=false
+						notes[invalidIndex][6]=false
+					end
 				end
 			end
 		end
@@ -273,7 +324,10 @@ function updateMidi()
 		{"Drums",findTrack("PART DRUMS")},
 		{"Bass",findTrack("PART BASS")},
 		{"Guitar",findTrack("PART GUITAR")},
-		{"Vocals",findTrack("PART VOCALS")}
+		{"Vocals",findTrack("PART VOCALS")},
+		{"Plastic Drums",findTrack("PLASTIC DRUMS")},
+		{"Plastic Bass", findTrack("PLASTIC BASS")},
+		{"Plastic Guitar", findTrack("PLASTIC GUITAR")}
 	}
 	if instrumentTracks[inst][2] then
 		local numItems = reaper.CountTrackMediaItems(instrumentTracks[inst][2])
@@ -362,6 +416,7 @@ function updateBeatLines()
 end
 
 function drawNotes()
+	isplastic = inst >= 5
 	for i=curNote,#notes do
 		invalid=false
 		ntime=notes[i][1]
@@ -371,9 +426,11 @@ function drawNotes()
 			invalid=true
 		end
 		lane=notes[i][3]
+		notedata=notes[i][3]
 		lift=notes[i][4]
 		curend=((notes[curNote][1]+notes[curNote][2])-curTime)*(trackSpeed+2)
 		od=notes[i][5]
+		hopo=notes[i][8]
 		if ntime>curTime+(4/(trackSpeed+2)) then break end
 		rtime=((ntime-curTime)*(trackSpeed+2))
 		rend=(((ntime+nlen)-curTime)*(trackSpeed+2))
@@ -405,24 +462,61 @@ function drawNotes()
 		
 		if rend>=-0.05 then
 			gfxid=2
+
+			if isplastic then gfxid = 11 + notedata end
+
 			if lift then gfxid=4 end 
+			if hopo then gfxid = 16 + notedata end
+
 			if od then 
-				gfxid=gfxid+1 
-				gfx.r, gfx.g, gfx.b=1,.56,0
+				if not isplastic then
+					gfxid=gfxid+1
+				else
+					-- this is a plastic instrument
+					gfxid = 3
+					if hopo then
+						gfxid = 9
+					end
+				end
+				gfx.r, gfx.g, gfx.b=.53,.6,.77
 			else
+				-- non overdrive sustain
+				-- add plastic case here
 				gfx.r, gfx.g, gfx.b=0.72,.3,1
+
+				if isplastic then
+					if lane == 0 then -- green lane
+						gfx.r, gfx.g, gfx.b=0.14,.59,.34
+					elseif lane == 1 then -- red lane
+						gfx.r, gfx.g, gfx.b=0.57,0,.16
+					elseif lane == 2 then -- yellow lane
+						gfx.r, gfx.g, gfx.b=0.77,.65,.2
+					elseif lane == 3 then -- blue lane
+						gfx.r, gfx.g, gfx.b=0.18,.3,.83
+					elseif lane == 4 then -- orange lane
+						gfx.r, gfx.g, gfx.b=0.78,.55,.16
+					end
+				end
 			end
 			if invalid then
 				gfx.r, gfx.g, gfx.b=1,0,0
 			end
+			-- draws sustain with the appropiate color
 			if rend>rtime then
 				gfx.line(susx-1,susy,endx-1,endy)
 				gfx.line(susx,susy,endx,endy)
 				gfx.line(susx+1,susy,endx+1,endy)
 			end
+			-- invalid lift
 			if invalid and lift then gfxid=6 end
+			-- invalid note
 			if invalid and not lift then gfxid=7 end
+			-- invalid hopo
+			if invalid and hopo then gfxid = 10 end
+
+			-- since it wasnt a sustain reset it back to 1 and draw the image
 			gfx.r, gfx.g, gfx.b=1,1,1
+			-- also draw a normal note at the start
 			gfx.blit(gfxid,noteScale,0,0,0,128,64,notex,notey)
 		end
 	end
@@ -484,12 +578,12 @@ keyBinds={
 		updateMidi()
 	end,
 	[91]=function()
-		if inst==1 then inst=4 else inst=inst-1 end
+		if inst==1 then inst=7 else inst=inst-1 end
 		midiHash=""
 		updateMidi()
 	end,
 	[93]=function()
-		if inst==4 then inst=1 else inst=inst+1 end
+		if inst==7 then inst=1 else inst=inst+1 end
 		midiHash=""
 		updateMidi()
 	end,
