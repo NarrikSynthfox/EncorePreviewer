@@ -11,3 +11,7 @@ A ReaScript made to preview custom Encore Charts
 7. Optionally, add a keybind, or use the Menu Editor to add the action to a menu
 8. Enjoy charting with the ability to properly view lifts!
    
+## Edits
+- Plastic Track support
+- Pro Drums support
+- Toms, HOPOs, colored notes support
