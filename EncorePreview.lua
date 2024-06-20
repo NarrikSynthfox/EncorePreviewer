@@ -11,9 +11,9 @@ trackSpeed=2
 inst=1
 diff=4
 pR={
-	{{60,63},{66,69}},
-	{{72,75},{78,81}},
-	{{84,87},{90,93}},
+	{{60,64},{66,69}},
+	{{72,76},{78,81}},
+	{{84,88},{90,93}},
 	{{96,100},{102,106}}
 } --pitch ranges {{notes},{lift markers}} for each difficulty
 plasticEventRanges = {
@@ -23,6 +23,18 @@ plasticEventRanges = {
 	{{101,102}}
 	-- hopo force 101, strum force 102, solo 103
 }
+
+toms = {
+	-- yellow, blue, green
+	110, 111, 112
+}
+notes_that_apply_as_tom_markable = {
+	{2,3,4},
+	{2,3,4},
+	{2, 3,4},
+	{2,3,4}
+}
+
 oP=116 --overdrive pitch
 offset=0
 notes={}
@@ -114,6 +126,12 @@ hopo_orange = gfx.loadimg(20,script_folder.."assets/hopo_orange.png")
 
 drum_line = gfx.loadimg(21,script_folder.."assets/drums_line.png")
 
+tom_yellow = gfx.loadimg(22,script_folder.."assets/note_dtomyel.png")
+tom_blue = gfx.loadimg(23,script_folder.."assets/note_dtomblu.png")
+tom_green = gfx.loadimg(24,script_folder.."assets/note_dtomgre.png")
+tom_o = gfx.loadimg(25,script_folder.."assets/tom_o.png")
+tom_invalid = gfx.loadimg(26,script_folder.."assets/tom_invalid.png")
+
 instrumentTracks={
 	{"Drums",findTrack("PART DRUMS")},
 	{"Bass",findTrack("PART BASS")},
@@ -155,6 +173,15 @@ function parseNotes(take)
 	cur_hopo_force = 1
 	_, notecount = reaper.MIDI_CountEvts(take)
 
+	tom_yellow_forces = {}
+	cur_tom_yellow_force = 1
+
+	tom_blue_forces = {}
+	cur_tom_blue_force = 1
+
+	tom_green_forces = {}
+	cur_tom_green_force = 1
+
 	isplastic = inst >= 5
 
 	for i = 0, notecount - 1 do
@@ -174,7 +201,7 @@ function parseNotes(take)
 					notes[noteIndex][6] = valid
 				end
 			else
-				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid , nendbeats- ntimebeats, false}) -- hopo
+				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid , nendbeats- ntimebeats, false, false}) -- hopo, tom
 			end
 		elseif pitch >= pR[diff][2][1] and pitch <= pR[diff][2][2] and not isplastic then
 			lane = pitch - pR[diff][2][1]
@@ -185,10 +212,16 @@ function parseNotes(take)
 					notes[noteIndex][6] = false
 				end
 			else
-				table.insert(notes, { ntime, nend - ntime, lane, true, false, false, nendbeats- ntimebeats, false})
+				table.insert(notes, { ntime, nend - ntime, lane, true, false, false, nendbeats- ntimebeats, false, false})
 			end
 		elseif pitch == plasticEventRanges[diff][1][1] and isplastic then
 			table.insert(hopo_forces, {ntime, nend})
+		elseif pitch == toms[1] and isplastic then -- this is a TOM note for YELLOW
+			table.insert(tom_yellow_forces, {ntime, nend})
+		elseif pitch == toms[2] and isplastic then -- this is a TOM note for BLUE
+			table.insert(tom_blue_forces, {ntime, nend})
+		elseif pitch == toms[3] and isplastic then -- this is a TOM note for GREEN
+			table.insert(tom_green_forces, {ntime, nend})
 		end
 	end
 	if #od_phrases~=0 then
@@ -209,6 +242,57 @@ function parseNotes(take)
 			end
 			if notes[i][1]>=hopo_forces[cur_hopo_force][1] and notes[i][1]<hopo_forces[cur_hopo_force][2] then
 				notes[i][8]=true
+			end
+		end
+	end
+
+	if #tom_yellow_forces ~= 0 then
+		for i=1,#notes do
+			if notes[i][1] > tom_yellow_forces[cur_tom_yellow_force][2] then
+				if cur_tom_yellow_force < #tom_yellow_forces then 
+					cur_tom_yellow_force = cur_tom_yellow_force + 1 
+				end
+			end
+			if notes[i][1] >= tom_yellow_forces[cur_tom_yellow_force][1] and notes[i][1] < tom_yellow_forces[cur_tom_yellow_force][2] then
+				if notes[i][3] == notes_that_apply_as_tom_markable[diff][1] then
+					-- check if its pitch is in the notes that can be toms
+					-- it is a tom
+					notes[i][9]=true
+				end
+			end
+		end
+	end
+
+	if #tom_blue_forces ~= 0 then
+		for i=1,#notes do
+			if notes[i][1] > tom_blue_forces[cur_tom_blue_force][2] then
+				if cur_tom_blue_force < #tom_blue_forces then 
+					cur_tom_blue_force = cur_tom_blue_force + 1 
+				end
+			end
+			if notes[i][1] >= tom_blue_forces[cur_tom_blue_force][1] and notes[i][1] < tom_blue_forces[cur_tom_blue_force][2] then
+				if notes[i][3] == notes_that_apply_as_tom_markable[diff][2] then
+					-- check if its pitch is in the notes that can be toms
+					-- it is a tom
+					notes[i][9]=true
+				end
+			end
+		end
+	end
+
+	if #tom_green_forces ~= 0 then
+		for i=1,#notes do
+			if notes[i][1] > tom_green_forces[cur_tom_green_force][2] then
+				if cur_tom_green_force < #tom_green_forces then 
+					cur_tom_green_force = cur_tom_green_force + 1 
+				end
+			end
+			if notes[i][1] >= tom_green_forces[cur_tom_green_force][1] and notes[i][1] < tom_green_forces[cur_tom_green_force][2] then
+				if notes[i][3] == notes_that_apply_as_tom_markable[diff][3] then
+					-- check if its pitch is in the notes that can be toms
+					-- it is a tom
+					notes[i][9]=true
+				end
 			end
 		end
 	end
@@ -420,6 +504,7 @@ end
 function drawNotes()
 	isplastic = inst >= 5
 	isprodrums = inst == 5
+	isexpert = diff == 4
 	for i=curNote,#notes do
 		invalid=false
 		ntime=notes[i][1]
@@ -434,6 +519,7 @@ function drawNotes()
 		curend=((notes[curNote][1]+notes[curNote][2])-curTime)*(trackSpeed+2)
 		od=notes[i][5]
 		hopo=notes[i][8]
+		tom = notes[i][9]
 		if ntime>curTime+(4/(trackSpeed+2)) then break end
 		rtime=((ntime-curTime)*(trackSpeed+2))
 		rend=(((ntime+nlen)-curTime)*(trackSpeed+2))
@@ -491,8 +577,24 @@ function drawNotes()
 				gfx.line(startlinex,drumliney + 2,endlinex,drumliney + 2)
 			end
 
+			if notedata == 4 and isprodrums then
+				gfxid = 11
+			end
+
 			if lift then gfxid=4 end 
 			if hopo then gfxid = 16 + notedata end
+
+			if tom then
+				if notedata == 2 then -- yellow
+					gfxid = 22
+				elseif notedata == 3 then -- blue
+					gfxid = 23
+				elseif notedata == 4 then -- green
+					gfxid = 24
+				end
+			--else
+				--gfxid= 4
+			end
 
 			if od then 
 				if not isplastic then
@@ -502,6 +604,8 @@ function drawNotes()
 					gfxid = 3
 					if hopo then
 						gfxid = 9
+					elseif tom then
+						gfxid = 25
 					end
 				end
 				gfx.r, gfx.g, gfx.b=.53,.6,.77
@@ -521,9 +625,17 @@ function drawNotes()
 						gfx.r, gfx.g, gfx.b=0.18,.3,.83
 					elseif lane == 4 then -- orange lane
 						gfx.r, gfx.g, gfx.b=0.78,.55,.16
+						if isprodrums then -- green if pro drums is active, anyway
+							gfx.r, gfx.g, gfx.b=0.14,.59,.34
+						end
 					end
 				end
 			end
+			if od and notedata == 0 and isprodrums then -- ignore overdrive on the first lane pro drums
+				gfxid = 21
+			end
+			-- invalid 5th lane note
+			if notedata == 4 and (not isplastic and not isexpert) then invalid = true end
 			if invalid then
 				gfx.r, gfx.g, gfx.b=1,0,0
 			end
@@ -538,7 +650,9 @@ function drawNotes()
 			-- invalid note
 			if invalid and not lift then gfxid=7 end
 			-- invalid hopo
-			if invalid and hopo then gfxid = 10 end
+			if invalid and hopo then gfxid = 10 end	
+			-- invalid tom
+			if invalid and tom then gfxid = 26 end
 
 			-- since it wasnt a sustain reset it back to 1 and draw the image
 			gfx.r, gfx.g, gfx.b=1,1,1
