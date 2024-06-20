@@ -1,4 +1,4 @@
-version_num="0.0.7.7 Plastic by tposejank"
+version_num="0.0.7.7 Plastic"
 imgScale=480/1024
 diffNames={"Easy","Medium","Hard","Expert"}
 movequant=10
