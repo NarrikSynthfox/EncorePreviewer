@@ -112,6 +112,8 @@ hopo_yellow = gfx.loadimg(18,script_folder.."assets/hopo_yellow.png")
 hopo_blue = gfx.loadimg(19,script_folder.."assets/hopo_blue.png")
 hopo_orange = gfx.loadimg(20,script_folder.."assets/hopo_orange.png")
 
+drum_line = gfx.loadimg(21,script_folder.."assets/drums_line.png")
+
 instrumentTracks={
 	{"Drums",findTrack("PART DRUMS")},
 	{"Bass",findTrack("PART BASS")},
@@ -417,6 +419,7 @@ end
 
 function drawNotes()
 	isplastic = inst >= 5
+	isprodrums = inst == 5
 	for i=curNote,#notes do
 		invalid=false
 		ntime=notes[i][1]
@@ -452,7 +455,16 @@ function drawNotes()
 		noteScaleEnd=imgScale*(1-(nsm*rend))
 		-- not plastic case
 			-- not pro drums case
-		if diff<4 and not isplastic then
+
+		startlinex = ((gfx.w/2)-(64*noteScale)+((nxoff*(1-(nxm*rtime)))*noteScale*(0.5-2)))
+		endlinex = ((gfx.w/2)-(64*noteScale)+((nxoff*(1-(nxm*rtime)))*noteScale*(3.5-2))) + (128 * noteScale)
+
+		if diff<4 and (not isplastic) or isprodrums then
+			if notedata ~= 0 and isprodrums then
+				lane = lane-1
+			elseif notedata == 0 and isprodrums then
+				lane = 0.5
+			end
 			lane=lane+0.5
 		end
 		notex=((gfx.w/2)-(64*noteScale)+((nxoff*(1-(nxm*rtime)))*noteScale*(lane-2)))
@@ -466,6 +478,18 @@ function drawNotes()
 			gfxid=2
 
 			if isplastic then gfxid = 11 + notedata end
+
+			if notedata == 0 and isprodrums then
+				gfxid = 21
+				gfx.r, gfx.g, gfx.b=0.78,.63,.16
+				if od then
+					gfx.r, gfx.g, gfx.b=.53,.6,.77
+				end
+				drumliney = notey + (36 * noteScale)
+				gfx.line(startlinex,drumliney,endlinex,drumliney)
+				gfx.line(startlinex,drumliney + 1,endlinex,drumliney + 1)
+				gfx.line(startlinex,drumliney + 2,endlinex,drumliney + 2)
+			end
 
 			if lift then gfxid=4 end 
 			if hopo then gfxid = 16 + notedata end
@@ -519,7 +543,10 @@ function drawNotes()
 			-- since it wasnt a sustain reset it back to 1 and draw the image
 			gfx.r, gfx.g, gfx.b=1,1,1
 			-- also draw a normal note at the start
-			gfx.blit(gfxid,noteScale,0,0,0,128,64,notex,notey)
+
+			widthNote = 128
+
+			gfx.blit(gfxid,noteScale,0,0,0,widthNote,64,notex,notey)
 		end
 	end
 end
@@ -528,8 +555,11 @@ function drawBeats()
 	width=300
 	isplastic = inst >= 5
 	isexpert = diff == 4
+	isprodrums = inst == 5
 	if diff==4 or isplastic then
-		width=425
+		if not isprodrums then
+			width=425
+		end
 	end
 	for i=curTimeLine,#beatLines do
 		btime=beatLines[i][1]
@@ -643,8 +673,9 @@ local function Main()
 	-- end	
 	isplastic = inst >= 5
 	isexpert = diff == 4
+	isprodrums = inst == 5
 
-	if isexpert or isplastic then
+	if (isexpert or isplastic) and not isprodrums then
 		gfx.blit(1,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale)); 
 	else
 		gfx.blit(0,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale));   
