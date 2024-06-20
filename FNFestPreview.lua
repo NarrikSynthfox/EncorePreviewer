@@ -450,7 +450,9 @@ function drawNotes()
 		
 		noteScale=imgScale*(1-(nsm*rtime))
 		noteScaleEnd=imgScale*(1-(nsm*rend))
-		if diff<4 then
+		-- not plastic case
+			-- not pro drums case
+		if diff<4 and not isplastic then
 			lane=lane+0.5
 		end
 		notex=((gfx.w/2)-(64*noteScale)+((nxoff*(1-(nxm*rtime)))*noteScale*(lane-2)))
@@ -524,7 +526,9 @@ end
 
 function drawBeats()
 	width=300
-	if diff==4 then
+	isplastic = inst >= 5
+	isexpert = diff == 4
+	if diff==4 or isplastic then
 		width=425
 	end
 	for i=curTimeLine,#beatLines do
@@ -637,9 +641,10 @@ local function Main()
 	-- if char~=0 then
 	-- 	reaper.ShowConsoleMsg(tostring(char).."\n")
 	-- end	
-	
+	isplastic = inst >= 5
+	isexpert = diff == 4
 
-	if diff==4 then
+	if isexpert or isplastic then
 		gfx.blit(1,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale)); 
 	else
 		gfx.blit(0,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale));   
