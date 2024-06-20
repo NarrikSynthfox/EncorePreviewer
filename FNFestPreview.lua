@@ -129,7 +129,7 @@ drum_line = gfx.loadimg(21,script_folder.."assets/drums_line.png")
 tom_yellow = gfx.loadimg(22,script_folder.."assets/note_dtomyel.png")
 tom_blue = gfx.loadimg(23,script_folder.."assets/note_dtomblu.png")
 tom_green = gfx.loadimg(24,script_folder.."assets/note_dtomgre.png")
-tom_o = gfx.loadimg(25,script_folder.."assets/tom_o.png")
+tom_o = gfx.loadimg(25,script_folder.."assets/note_tom_o.png")
 tom_invalid = gfx.loadimg(26,script_folder.."assets/tom_invalid.png")
 
 instrumentTracks={
