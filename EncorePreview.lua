@@ -1,4 +1,4 @@
-version_num="0.0.7.7 Plastic"
+version_num="0.0.8"
 imgScale=480/1024
 diffNames={"Easy","Medium","Hard","Expert"}
 movequant=10
@@ -10,6 +10,9 @@ eventsHash=""
 trackSpeed=2
 inst=1
 diff=4
+pixelsDrumline = 5
+hopothresh = 170 -- ticks
+guitarSoloP = 103
 pR={
 	{{60,64},{66,69}},
 	{{72,76},{78,81}},
@@ -38,6 +41,7 @@ notes_that_apply_as_tom_markable = {
 oP=116 --overdrive pitch
 offset=0
 notes={}
+solo_markers = {}
 beatLines={}
 eventsData={}
 trackRange={0,0}
@@ -75,6 +79,27 @@ function getNoteIndex(time, lane)
 		end
 	end
 	return -1
+end
+
+function anyOtherAtTime(time)
+	for i, note in ipairs(notes) do
+		if note[1] == time then
+			return -1
+		end
+	end
+	return 0
+end
+
+function previousNote(take, index, minpitch, maxpitch)
+	local _, _, _, lastspos, lastepos, _, lastpitch, _ = reaper.MIDI_GetNote(take, index - 1)
+	while lastpitch < minpitch or lastpitch > maxpitch do
+	  	index = index - 1
+	  	if index < 1 then
+			return nil
+	  	end
+	  	_, _, _, lastspos, lastepos, _, lastpitch, _ = reaper.MIDI_GetNote(take, index - 1)
+	end
+	return {lastspos, lastepos, lastpitch}
 end
 
 function findTrack(trackName)
@@ -132,6 +157,12 @@ tom_green = gfx.loadimg(24,script_folder.."assets/note_dtomgre.png")
 tom_o = gfx.loadimg(25,script_folder.."assets/note_tom_o.png")
 tom_invalid = gfx.loadimg(26,script_folder.."assets/tom_invalid.png")
 
+cymbal_yellow = gfx.loadimg(27,script_folder.."assets/note_dcymyel.png")
+cymbal_blue = gfx.loadimg(28,script_folder.."assets/note_dcymblu.png")
+cymbal_green = gfx.loadimg(29,script_folder.."assets/note_dcymgre.png")
+cymbal_o = gfx.loadimg(30,script_folder.."assets/cym_o.png")
+cymbal_invalid = gfx.loadimg(31,script_folder.."assets/cym_invalid.png")
+
 instrumentTracks={
 	{"Drums",findTrack("PART DRUMS")},
 	{"Bass",findTrack("PART BASS")},
@@ -168,9 +199,15 @@ function parseNotes(take)
 	notes = {}
 	od_phrases={}
 	hopo_forces = {}
+	strum_forces = {}
+
+	solo_markers = {}
+
 	od=false
 	cur_od_phrase=1
 	cur_hopo_force = 1
+	cur_strum_force = 1
+
 	_, notecount = reaper.MIDI_CountEvts(take)
 
 	tom_yellow_forces = {}
@@ -183,6 +220,7 @@ function parseNotes(take)
 	cur_tom_green_force = 1
 
 	isplastic = inst >= 5
+	isriffmaster = inst >= 6
 
 	for i = 0, notecount - 1 do
 		_, _, _, spos, epos, _, pitch, _ = reaper.MIDI_GetNote(take, i)
@@ -194,6 +232,7 @@ function parseNotes(take)
 			table.insert(od_phrases, {ntime,nend})
 		elseif pitch >= pR[diff][1][1] and pitch <= pR[diff][1][2] then
 			valid=true
+			hopo = false
 			lane = pitch - pR[diff][1][1]
 			noteIndex = getNoteIndex(ntime, lane)
 			if noteIndex ~= -1 then
@@ -201,7 +240,29 @@ function parseNotes(take)
 					notes[noteIndex][6] = valid
 				end
 			else
-				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid , nendbeats- ntimebeats, false, false}) -- hopo, tom
+				-- hopo logic
+				if i > 1 and isriffmaster then
+					previousnote = previousNote(take, i, pR[diff][1][1], pR[diff][1][2])
+					
+					if previousnote ~= nil then
+						lastspos = previousnote[1]
+						lastepos = previousnote[2]
+						lastpitch = previousnote[3]
+						-- hopo threshold
+	
+						ischord = anyOtherAtTime(ntime) == -1
+	
+						if lastpitch >= pR[diff][1][1] and lastpitch <= pR[diff][1][2] then
+							if lastpitch ~= pitch and not ischord then
+								if spos - lastspos <= hopothresh then
+									hopo = true
+								end
+							end
+						end
+					end
+				end
+				-- hopo, tom
+				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid , nendbeats- ntimebeats, hopo, false}) 
 			end
 		elseif pitch >= pR[diff][2][1] and pitch <= pR[diff][2][2] and not isplastic then
 			lane = pitch - pR[diff][2][1]
@@ -211,17 +272,21 @@ function parseNotes(take)
 				if nendbeats-ntimebeats>0.33 or notes[noteIndex][2]~=nend-ntime then
 					notes[noteIndex][6] = false
 				end
-			else
+			else -- lifts cant be hopos or toms
 				table.insert(notes, { ntime, nend - ntime, lane, true, false, false, nendbeats- ntimebeats, false, false})
 			end
-		elseif pitch == plasticEventRanges[diff][1][1] and isplastic then
+		elseif pitch == plasticEventRanges[diff][1][1] and isplastic then -- hopo force
 			table.insert(hopo_forces, {ntime, nend})
-		elseif pitch == toms[1] and isplastic then -- this is a TOM note for YELLOW
+		elseif pitch == plasticEventRanges[diff][1][2] and isplastic then -- strum force
+			table.insert(strum_forces, {ntime, nend})
+		elseif pitch == toms[1] and isplastic then -- TOM YELLOW
 			table.insert(tom_yellow_forces, {ntime, nend})
-		elseif pitch == toms[2] and isplastic then -- this is a TOM note for BLUE
+		elseif pitch == toms[2] and isplastic then -- TOM BLUE
 			table.insert(tom_blue_forces, {ntime, nend})
-		elseif pitch == toms[3] and isplastic then -- this is a TOM note for GREEN
+		elseif pitch == toms[3] and isplastic then -- TOM GREEN
 			table.insert(tom_green_forces, {ntime, nend})
+		elseif pitch == guitarSoloP and isriffmaster then -- solo marker
+			table.insert(solo_markers, {ntime, nend})
 		end
 	end
 	if #od_phrases~=0 then
@@ -246,17 +311,22 @@ function parseNotes(take)
 		end
 	end
 
+	if #strum_forces ~= 0 then
+		for i=1,#notes do
+			if notes[i][1]>strum_forces[cur_strum_force][2] then
+				if cur_strum_force<#strum_forces then cur_strum_force=cur_strum_force+1 end
+			end
+			if notes[i][1]>=strum_forces[cur_strum_force][1] and notes[i][1]<strum_forces[cur_strum_force][2] then
+				notes[i][8]=false -- reset hopo to false
+			end
+		end
+	end
+
 	if #tom_yellow_forces ~= 0 then
 		for i=1,#notes do
-			if notes[i][1] > tom_yellow_forces[cur_tom_yellow_force][2] then
-				if cur_tom_yellow_force < #tom_yellow_forces then 
-					cur_tom_yellow_force = cur_tom_yellow_force + 1 
-				end
-			end
+			if notes[i][1] > tom_yellow_forces[cur_tom_yellow_force][2] then if cur_tom_yellow_force < #tom_yellow_forces then cur_tom_yellow_force = cur_tom_yellow_force + 1 end end
 			if notes[i][1] >= tom_yellow_forces[cur_tom_yellow_force][1] and notes[i][1] < tom_yellow_forces[cur_tom_yellow_force][2] then
 				if notes[i][3] == notes_that_apply_as_tom_markable[diff][1] then
-					-- check if its pitch is in the notes that can be toms
-					-- it is a tom
 					notes[i][9]=true
 				end
 			end
@@ -265,15 +335,9 @@ function parseNotes(take)
 
 	if #tom_blue_forces ~= 0 then
 		for i=1,#notes do
-			if notes[i][1] > tom_blue_forces[cur_tom_blue_force][2] then
-				if cur_tom_blue_force < #tom_blue_forces then 
-					cur_tom_blue_force = cur_tom_blue_force + 1 
-				end
-			end
+			if notes[i][1] > tom_blue_forces[cur_tom_blue_force][2] then if cur_tom_blue_force < #tom_blue_forces then cur_tom_blue_force = cur_tom_blue_force + 1 end end
 			if notes[i][1] >= tom_blue_forces[cur_tom_blue_force][1] and notes[i][1] < tom_blue_forces[cur_tom_blue_force][2] then
 				if notes[i][3] == notes_that_apply_as_tom_markable[diff][2] then
-					-- check if its pitch is in the notes that can be toms
-					-- it is a tom
 					notes[i][9]=true
 				end
 			end
@@ -282,15 +346,9 @@ function parseNotes(take)
 
 	if #tom_green_forces ~= 0 then
 		for i=1,#notes do
-			if notes[i][1] > tom_green_forces[cur_tom_green_force][2] then
-				if cur_tom_green_force < #tom_green_forces then 
-					cur_tom_green_force = cur_tom_green_force + 1 
-				end
-			end
+			if notes[i][1] > tom_green_forces[cur_tom_green_force][2] then if cur_tom_green_force < #tom_green_forces then cur_tom_green_force = cur_tom_green_force + 1 end end
 			if notes[i][1] >= tom_green_forces[cur_tom_green_force][1] and notes[i][1] < tom_green_forces[cur_tom_green_force][2] then
 				if notes[i][3] == notes_that_apply_as_tom_markable[diff][3] then
-					-- check if its pitch is in the notes that can be toms
-					-- it is a tom
 					notes[i][9]=true
 				end
 			end
@@ -402,7 +460,7 @@ function parseNotes(take)
 			end
 		end
 	end
-	
+	table.sort(notes, notesCompare) -- sort again, fixes drum line over other notes
 end
 
 function updateMidi()
@@ -572,9 +630,9 @@ function drawNotes()
 					gfx.r, gfx.g, gfx.b=.53,.6,.77
 				end
 				drumliney = notey + (36 * noteScale)
-				gfx.line(startlinex,drumliney,endlinex,drumliney)
-				gfx.line(startlinex,drumliney + 1,endlinex,drumliney + 1)
-				gfx.line(startlinex,drumliney + 2,endlinex,drumliney + 2)
+				for i = 0, pixelsDrumline do
+					gfx.line(startlinex - math.floor(i * 0.3),drumliney + i,endlinex + math.floor(i * 0.3),drumliney + i)
+				end
 			end
 
 			if notedata == 4 and isprodrums then
@@ -584,13 +642,13 @@ function drawNotes()
 			if lift then gfxid=4 end 
 			if hopo then gfxid = 16 + notedata end
 
-			if tom then
+			if isprodrums then
 				if notedata == 2 then -- yellow
-					gfxid = 22
+					gfxid = tom and 22 or 27
 				elseif notedata == 3 then -- blue
-					gfxid = 23
+					gfxid = tom and 23 or 28
 				elseif notedata == 4 then -- green
-					gfxid = 24
+					gfxid = tom and 24 or 29
 				end
 			--else
 				--gfxid= 4
@@ -606,6 +664,8 @@ function drawNotes()
 						gfxid = 9
 					elseif tom then
 						gfxid = 25
+					elseif isprodrums and notedata > 1 and not tom then
+						gfxid = 30
 					end
 				end
 				gfx.r, gfx.g, gfx.b=.53,.6,.77
@@ -653,6 +713,9 @@ function drawNotes()
 			if invalid and hopo then gfxid = 10 end	
 			-- invalid tom
 			if invalid and tom then gfxid = 26 end
+			if isprodrums and invalid and notedata > 1 and not tom then
+				gfxid = 27 + (notedata - 2)
+			end
 
 			-- since it wasnt a sustain reset it back to 1 and draw the image
 			gfx.r, gfx.g, gfx.b=1,1,1
@@ -769,7 +832,28 @@ keyBinds={
 	[1919379572.0]=function() 
 		if movequant==#quants then movequant=1 else movequant=movequant+1 end
 	end,
-	[26161.0]=function() showHelp = not showHelp end
+	[26161.0]=function() showHelp = not showHelp end,
+	[48] = function()
+		hopothresh = hopothresh + 1
+		midiHash=""
+		updateMidi()
+	end,
+	[40] = function()
+		hopothresh = hopothresh - 10
+		midiHash=""
+		updateMidi()
+	end,
+	[57] = function()
+		if hopothresh > 1 then hopothresh = hopothresh - 1 end
+		midiHash=""
+		updateMidi()
+	end,
+	[41] = function()
+		if hopothresh > 1 then hopothresh = hopothresh + 10 end
+		if hopothresh < 1 then hopothresh = 1 end
+		midiHash=""
+		updateMidi()
+	end
 }
 
 local function Main()
@@ -786,8 +870,10 @@ local function Main()
 	-- 	reaper.ShowConsoleMsg(tostring(char).."\n")
 	-- end	
 	isplastic = inst >= 5
+	isriffmaster = inst >= 6
 	isexpert = diff == 4
 	isprodrums = inst == 5
+	soloactive = false
 
 	if (isexpert or isplastic) and not isprodrums then
 		gfx.blit(1,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale)); 
@@ -818,6 +904,13 @@ local function Main()
 			break
 		end
 	end
+
+	for i = 1, #solo_markers do
+		if solo_markers[i][1] <= curTime and solo_markers[i][2] >= curTime then
+			soloactive = true
+		end
+	end
+
 	updateEvents()
 	updateMidi()
 	updateBeatLines()
@@ -848,6 +941,22 @@ local function Main()
 	strx,stry=gfx.measurestr("Press F1 for controls")
 	gfx.x,gfx.y=gfx.w-strx,gfx.h-stry
 	gfx.drawstr("Press F1 for controls")
+
+	if isriffmaster then
+		hopostr = "HOPO Thresh: "..hopothresh..' ticks'
+		strx,stry=gfx.measurestr(hopostr)
+		gfx.x,gfx.y=(gfx.w/2)-(strx/2),0
+		gfx.drawstr(hopostr)
+	end
+
+	if soloactive then
+		solostr = "SOLO ACTIVE"
+		strx,stry=gfx.measurestr(solostr)
+		gfx.x,gfx.y=(gfx.w/2)-(strx/2),0
+		if isriffmaster then gfx.y = 20 end
+		gfx.drawstr(solostr)
+	end
+
 	if showHelp then
 		gfx.mode=0
 		gfx.r,gfx.g,gfx.b,gfx.a=0,0,0,0.75
@@ -861,6 +970,7 @@ local function Main()
 		Change track speed: + / -
 		Change offset: { / } (Shift + [ / ])
 		Change snap: left / right arrows
+		Change HOPO Thresh: 9 / 0 (Shift: x10)
 		Scroll: up/down arrow keys
 		]],1,gfx.w,gfx.h)
 	end
