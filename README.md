@@ -10,8 +10,8 @@ A ReaScript made to preview custom Encore Charts
 6. Select **EncorePreview.lua** and click **Open**
 7. Optionally, add a keybind, or use the Menu Editor to add the action to a menu
 8. Enjoy charting with the ability to properly view lifts!
-   
-## Additional Features
+
+## Plastic track support added by [tposejank](https://github.com/tposejank):
 - Plastic Track support
 - Pro Drums Track
 - Toms, HOPOs, colored notes
