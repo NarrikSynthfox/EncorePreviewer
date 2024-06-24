@@ -13,6 +13,7 @@ diff=4
 pixelsDrumline = 5
 hopothresh = 170 -- ticks
 guitarSoloP = 103
+trillP = 127
 pR={
 	{{60,64},{66,69}},
 	{{72,76},{78,81}},
@@ -42,6 +43,7 @@ oP=116 --overdrive pitch
 offset=0
 notes={}
 solo_markers = {}
+trills = {}
 beatLines={}
 eventsData={}
 trackRange={0,0}
@@ -84,10 +86,10 @@ end
 function anyOtherAtTime(time)
 	for i, note in ipairs(notes) do
 		if note[1] == time then
-			return -1
+			return i
 		end
 	end
-	return 0
+	return -1
 end
 
 function previousNote(take, index, minpitch, maxpitch)
@@ -202,6 +204,7 @@ function parseNotes(take)
 	strum_forces = {}
 
 	solo_markers = {}
+	trills = {}
 
 	od=false
 	cur_od_phrase=1
@@ -250,7 +253,7 @@ function parseNotes(take)
 						lastpitch = previousnote[3]
 						-- hopo threshold
 	
-						ischord = anyOtherAtTime(ntime) == -1
+						ischord = anyOtherAtTime(ntime) ~= -1
 	
 						if lastpitch >= pR[diff][1][1] and lastpitch <= pR[diff][1][2] then
 							if lastpitch ~= pitch and not ischord then
@@ -261,6 +264,13 @@ function parseNotes(take)
 						end
 					end
 				end
+
+				-- check again for chords
+				otherAtTime = anyOtherAtTime(ntime)
+				if otherAtTime ~= -1 then
+					notes[otherAtTime][8] = hopo
+				end
+
 				-- hopo, tom
 				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid , nendbeats- ntimebeats, hopo, false}) 
 			end
@@ -287,6 +297,8 @@ function parseNotes(take)
 			table.insert(tom_green_forces, {ntime, nend})
 		elseif pitch == guitarSoloP and isriffmaster then -- solo marker
 			table.insert(solo_markers, {ntime, nend})
+		elseif pitch == trillP and isriffmaster then
+			table.insert(trills, {ntime, nend})
 		end
 	end
 	if #od_phrases~=0 then
@@ -460,7 +472,9 @@ function parseNotes(take)
 			end
 		end
 	end
-	table.sort(notes, notesCompare) -- sort again, fixes drum line over other notes
+	if inst == 5 then
+		table.sort(notes, notesCompare) -- sort again, fixes drum line over other notes
+	end
 end
 
 function updateMidi()
@@ -874,6 +888,7 @@ local function Main()
 	isexpert = diff == 4
 	isprodrums = inst == 5
 	soloactive = false
+	trillactive = false
 
 	if (isexpert or isplastic) and not isprodrums then
 		gfx.blit(1,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale)); 
@@ -908,6 +923,12 @@ local function Main()
 	for i = 1, #solo_markers do
 		if solo_markers[i][1] <= curTime and solo_markers[i][2] >= curTime then
 			soloactive = true
+		end
+	end
+
+	for i = 1, #trills do
+		if trills[i][1] <= curTime and trills[i][2] >= curTime then
+			trillactive = true
 		end
 	end
 
@@ -949,8 +970,14 @@ local function Main()
 		gfx.drawstr(hopostr)
 	end
 
-	if soloactive then
-		solostr = "SOLO ACTIVE"
+	if soloactive or trillactive then
+		solostr = 'SOLO, TRILL ACTIVE'
+		if soloactive and not trillactive then
+			solostr = 'SOLO ACTIVE'
+		elseif trillactive and not soloactive then
+			solostr = 'TRILL ACTIVE'
+		end
+		
 		strx,stry=gfx.measurestr(solostr)
 		gfx.x,gfx.y=(gfx.w/2)-(strx/2),0
 		if isriffmaster then gfx.y = 20 end
