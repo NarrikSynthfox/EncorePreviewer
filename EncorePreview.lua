@@ -1,4 +1,4 @@
-version_num="0.0.8"
+version_num="0.0.9"
 imgScale=480/1024
 diffNames={"Easy","Medium","Hard","Expert"}
 movequant=10
@@ -14,6 +14,9 @@ pixelsDrumline = 5
 hopothresh = 170 -- ticks
 guitarSoloP = 103
 trillP = 127
+tremoloP = 126
+curOdPhrase = 0
+beatLineTimes = false
 pR={
 	{{60,64},{66,69}},
 	{{72,76},{78,81}},
@@ -42,14 +45,17 @@ notes_that_apply_as_tom_markable = {
 oP=116 --overdrive pitch
 offset=0
 notes={}
+od_phrases = {}
 solo_markers = {}
 trills = {}
+tremolos = {}
 beatLines={}
 eventsData={}
 trackRange={0,0}
 curTime=0
 curTimeLine=1
 curEvent=1
+lastcurnote = 1
 curNote=1
 nxoff=152 --x offset
 nxm=0.05 --x mult of offset
@@ -104,6 +110,15 @@ function previousNote(take, index, minpitch, maxpitch)
 	return {lastspos, lastepos, lastpitch}
 end
 
+function contains(table, element)
+	for _, value in pairs(table) do
+	  	if value == element then
+			return true
+	  	end
+	end
+	return false
+end
+
 function findTrack(trackName)
 	local numTracks = reaper.CountTracks(0)
 	for i = 0, numTracks - 1 do
@@ -114,6 +129,37 @@ function findTrack(trackName)
 		end
 	end
 	return nil
+end
+
+function breakTime()
+	if #notes > 2 and curNote > 1 then
+		return (notes[curNote][10] - notes[curNote - 1][11]) / 4
+	elseif #notes > 0 then
+		return notes[1][10] -- break at the start
+	end
+	return 0
+end
+
+function findNotesThatWrapSolo(soloTime)
+	things = {nil, nil} -- nil moment :steamhappy:
+	for i = 1, #solo_markers do
+		if solo_markers[i][1] == soloTime then
+			-- find notes in this solo
+
+			for j = 1, #notes do
+				if notes[j][1] >= solo_markers[i][1] then
+					things[1] = j
+					for k = 1, #notes do -- jolly good golly the for looper!
+						if notes[k][1] >= solo_markers[i][2] then -- this note IS AFTER the solo
+							things[2] = k-1
+							return things
+						end
+					end
+				end
+			end
+
+		end
+	end
 end
 
 gfx.clear = rgb2num(42, 0, 71)
@@ -205,6 +251,7 @@ function parseNotes(take)
 
 	solo_markers = {}
 	trills = {}
+	tremolos = {}
 
 	od=false
 	cur_od_phrase=1
@@ -272,7 +319,7 @@ function parseNotes(take)
 				end
 
 				-- hopo, tom
-				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid , nendbeats- ntimebeats, hopo, false}) 
+				table.insert(notes, { ntime, nend - ntime, lane, false, false, valid , nendbeats- ntimebeats, hopo, false, ntimebeats, nendbeats}) 
 			end
 		elseif pitch >= pR[diff][2][1] and pitch <= pR[diff][2][2] and not isplastic then
 			lane = pitch - pR[diff][2][1]
@@ -283,7 +330,7 @@ function parseNotes(take)
 					notes[noteIndex][6] = false
 				end
 			else -- lifts cant be hopos or toms
-				table.insert(notes, { ntime, nend - ntime, lane, true, false, false, nendbeats- ntimebeats, false, false})
+				table.insert(notes, { ntime, nend - ntime, lane, true, false, false, nendbeats- ntimebeats, false, false, ntimebeats, nendbeats})
 			end
 		elseif pitch == plasticEventRanges[diff][1][1] and isplastic then -- hopo force
 			table.insert(hopo_forces, {ntime, nend})
@@ -297,8 +344,10 @@ function parseNotes(take)
 			table.insert(tom_green_forces, {ntime, nend})
 		elseif pitch == guitarSoloP and isriffmaster then -- solo marker
 			table.insert(solo_markers, {ntime, nend})
-		elseif pitch == trillP and isriffmaster then
+		elseif pitch == trillP and isplastic then -- trill
 			table.insert(trills, {ntime, nend})
+		elseif pitch == tremoloP and isplastic then -- tremolo
+			table.insert(tremolos, {ntime, nend})
 		end
 	end
 	if #od_phrases~=0 then
@@ -577,6 +626,7 @@ function drawNotes()
 	isplastic = inst >= 5
 	isprodrums = inst == 5
 	isexpert = diff == 4
+	isriffmaster = inst >= 6
 	for i=curNote,#notes do
 		invalid=false
 		ntime=notes[i][1]
@@ -689,15 +739,15 @@ function drawNotes()
 				gfx.r, gfx.g, gfx.b=0.72,.3,1
 
 				if isplastic then
-					if lane == 0 then -- green lane
+					if notedata == 0 then -- green lane
 						gfx.r, gfx.g, gfx.b=0.14,.59,.34
-					elseif lane == 1 then -- red lane
+					elseif notedata == 1 then -- red lane
 						gfx.r, gfx.g, gfx.b=0.57,0,.16
-					elseif lane == 2 then -- yellow lane
+					elseif notedata == 2 then -- yellow lane
 						gfx.r, gfx.g, gfx.b=0.77,.65,.2
-					elseif lane == 3 then -- blue lane
+					elseif notedata == 3 then -- blue lane
 						gfx.r, gfx.g, gfx.b=0.18,.3,.83
-					elseif lane == 4 then -- orange lane
+					elseif notedata == 4 then -- orange lane
 						gfx.r, gfx.g, gfx.b=0.78,.55,.16
 						if isprodrums then -- green if pro drums is active, anyway
 							gfx.r, gfx.g, gfx.b=0.14,.59,.34
@@ -740,6 +790,70 @@ function drawNotes()
 			gfx.blit(gfxid,noteScale,0,0,0,widthNote,64,notex,notey)
 		end
 	end
+
+	for i=curOdPhrase,#od_phrases do
+		local ntime=od_phrases[i][1]
+		local nlen=od_phrases[i][2]-ntime
+
+		if not (ntime+nlen<curTime) then
+			if ntime>curTime+(4/(trackSpeed+2)) then break end
+			rtime=((ntime-curTime)*(trackSpeed+2))
+			rend=(((ntime+nlen)-curTime)*(trackSpeed+2))
+			if rtime<0 then rtime=0 end
+			if rend>4 then
+				rend=4
+			end
+			lane = -0.75
+			if not isexpert then
+				lane = 0
+			end
+			if isriffmaster then
+				lane = -0.75
+			end
+			if isprodrums then
+				lane = 0
+			end
+			
+			noteScale=imgScale*(1-(nsm*rtime))
+			noteScaleEnd=imgScale*(1-(nsm*rend))
+			-- not plastic case
+				-- not pro drums case
+
+			notex=((gfx.w/2)-(64*noteScale)+((nxoff*(1-(nxm*rtime)))*noteScale*(lane-2)))
+			notey=gfx.h-(32*noteScale)-(248*noteScale)-((nyoff*rtime)*noteScale)
+			susx=((gfx.w/2)+((nxoff*(1-(nxm*rtime)))*noteScale*(lane-2)))
+			susy=gfx.h-(248*noteScale)-((nyoff*rtime)*noteScale)
+			endx=((gfx.w/2)+((nxoff*(1-(nxm*rend)))*noteScaleEnd*(lane-2)))
+			endy=gfx.h-(248*noteScaleEnd)-((nyoff*rend)*noteScaleEnd)
+			lane = 4.75
+			if not isexpert then
+				lane = 4
+			end
+			if isriffmaster then
+				lane = 4.75
+			end
+			if isprodrums then
+				lane = 4
+			end
+			susx2=((gfx.w/2)+((nxoff*(1-(nxm*rtime)))*noteScale*(lane-2)))
+			susy2=gfx.h-(248*noteScale)-((nyoff*rtime)*noteScale)
+			endx2=((gfx.w/2)+((nxoff*(1-(nxm*rend)))*noteScaleEnd*(lane-2)))
+			endy2=gfx.h-(248*noteScaleEnd)-((nyoff*rend)*noteScaleEnd)
+			
+			if rend>=-0.05 then
+				gfx.r, gfx.g, gfx.b=.53,.6,.77
+				-- draws sustain with the appropiate color
+				for i=0,5 do
+					gfx.line(susx+i,susy,endx+i,endy)
+					gfx.line(susx2+i,susy2,endx2+i,endy2)
+				end
+
+				gfx.r, gfx.g, gfx.b=1,1,1
+
+				gfx.blit(21,noteScale,0,0,0,128,64,notex,notey)
+			end
+		end
+	end
 end
 
 function drawBeats()
@@ -771,6 +885,14 @@ function drawBeats()
 			gfx.line(sx-1,y+1,ex+1,y+1)
 		end
 		gfx.r,gfx.g,gfx.b=1,1,1
+		if true then
+			gfx.setfont(1, "Arial", 15)
+			strx,stry = gfx.measurestr(btime)
+
+			gfx.x = sx - (strx + 10)
+			gfx.y = y - 7
+			gfx.drawstr(btime)
+		end
 	end
 end
 
@@ -888,7 +1010,9 @@ local function Main()
 	isexpert = diff == 4
 	isprodrums = inst == 5
 	soloactive = false
+	solowrapper = {nil,nil}
 	trillactive = false
+	tremoloactive = false
 
 	if (isexpert or isplastic) and not isprodrums then
 		gfx.blit(1,imgScale,0,0,0,1024,1024,(gfx.w/2)-(imgScale*512),gfx.h-(1024*imgScale)); 
@@ -912,6 +1036,13 @@ local function Main()
 			break
 		end
 	end
+	curOdPhrase=1
+	for i=1,#od_phrases do
+		if od_phrases[i][1] <= curTime then
+			curOdPhrase = i
+		end
+	end
+
 	curTimeLine=1
 	for i=1,#beatLines do
 		curTimeLine=i
@@ -923,12 +1054,20 @@ local function Main()
 	for i = 1, #solo_markers do
 		if solo_markers[i][1] <= curTime and solo_markers[i][2] >= curTime then
 			soloactive = true
+
+			solowrapper = findNotesThatWrapSolo(solo_markers[i][1])
 		end
 	end
 
 	for i = 1, #trills do
 		if trills[i][1] <= curTime and trills[i][2] >= curTime then
 			trillactive = true
+		end
+	end
+
+	for i = 1, #tremolos do
+		if tremolos[i][1] <= curTime and tremolos[i][2] >= curTime then
+			tremoloactive = true
 		end
 	end
 
@@ -966,22 +1105,75 @@ local function Main()
 	if isriffmaster then
 		hopostr = "HOPO Thresh: "..hopothresh..' ticks'
 		strx,stry=gfx.measurestr(hopostr)
-		gfx.x,gfx.y=(gfx.w/2)-(strx/2),0
+		gfx.x,gfx.y=gfx.w-strx,0
 		gfx.drawstr(hopostr)
 	end
 
-	if soloactive or trillactive then
-		solostr = 'SOLO, TRILL ACTIVE'
-		if soloactive and not trillactive then
-			solostr = 'SOLO ACTIVE'
-		elseif trillactive and not soloactive then
-			solostr = 'TRILL ACTIVE'
+	if soloactive or trillactive or tremoloactive then
+		curevents = {}
+		if soloactive then
+			table.insert(curevents,'SOLO')
+		end
+		if trillactive then
+			if isriffmaster then
+				table.insert(curevents,'TRILL')
+			else
+				table.insert(curevents,'SPECIAL DRUM ROLL')
+			end
+		end
+		if tremoloactive then
+			if isriffmaster then
+				table.insert(curevents,'TREMOLO')
+			else
+				table.insert(curevents,'STANDARD DRUM ROLL')
+			end
 		end
 		
-		strx,stry=gfx.measurestr(solostr)
+		strx,stry=gfx.measurestr(table.concat(curevents, ", ")..' ACTIVE')
 		gfx.x,gfx.y=(gfx.w/2)-(strx/2),0
-		if isriffmaster then gfx.y = 20 end
-		gfx.drawstr(solostr)
+		gfx.drawstr(table.concat(curevents, ", ")..' ACTIVE')
+	end
+
+	if soloactive then
+		tsize = 30
+		animframe = false
+		if lastcurnote ~= curNote then
+			tsize = 33
+			animframe = true
+		end
+		yvp = 20
+		if animframe then
+			yvp = 17
+		end
+		gfx.setfont(1, "Arial", tsize)
+		strx,stry=gfx.measurestr(curNote-solowrapper[1]..'/'.. solowrapper[2] - solowrapper[1])
+		gfx.x,gfx.y=(gfx.w/2)-(strx/2),yvp
+		gfx.drawstr(curNote-solowrapper[1]..'/'.. solowrapper[2] - solowrapper[1])
+
+		strprevh = stry
+		if animframe then
+			strprevh = strprevh - 5
+		end
+		gfx.setfont(1, "Arial", 25)
+		strx,stry=gfx.measurestr(math.floor(((curNote-solowrapper[1])/(solowrapper[2] - solowrapper[1])) * 100) .. '%')
+		gfx.x,gfx.y=(gfx.w/2)-(strx/2),20+strprevh
+		gfx.drawstr(math.floor(((curNote-solowrapper[1])/(solowrapper[2] - solowrapper[1])) * 100) .. '%')
+	end
+
+	local btime = breakTime()
+	if btime > 3 then
+		local measuresNextNote = reaper.TimeMap2_timeToQN(0, curTime) / 4
+		local toMeasureTime = notes[curNote][10] / 4
+
+		local measuresLeft = math.floor((toMeasureTime-measuresNextNote))
+		if measuresLeft < 0 then
+			measuresLeft = 0
+		end
+
+		strx,stry=gfx.measurestr(measuresLeft)
+
+		gfx.x,gfx.y=(gfx.w/2)-(strx/2),gfx.h - 100
+ 		gfx.drawstr(measuresLeft)
 	end
 
 	if showHelp then
@@ -990,6 +1182,7 @@ local function Main()
 		gfx.rect(0,0,gfx.w,gfx.h)
 		gfx.r,gfx.g,gfx.b,gfx.a=1,1,1,1
 		gfx.x,gfx.y=0,320*imgScale
+		gfx.setfont(1, "Arial", 20)
 		gfx.drawstr([[Keybinds
 		 
 		Change instrument: [ / ]
@@ -1001,6 +1194,7 @@ local function Main()
 		Scroll: up/down arrow keys
 		]],1,gfx.w,gfx.h)
 	end
+	lastcurnote = curNote
 	gfx.update()
 end
 
