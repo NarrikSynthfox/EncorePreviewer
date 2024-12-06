@@ -1,4 +1,4 @@
-version_num="0.0.8"
+version_num="0.0.9"
 imgScale=480/1024
 diffNames={"Easy","Medium","Hard","Expert"}
 movequant=10
@@ -117,7 +117,7 @@ function findTrack(trackName)
 end
 
 gfx.clear = rgb2num(42, 0, 71)
-gfx.init("Encore Preview", 640, 480, 0, 200, 200)
+gfx.init("Encore Preview (JSON)", 640, 480, 0, 200, 200)
 
 
 
